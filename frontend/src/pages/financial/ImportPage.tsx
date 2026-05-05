@@ -1,8 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useState, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileText, AlertTriangle, Check, X, Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import {
+  ArrowLeft, Upload, FileText, AlertTriangle, Check, X, Loader2,
+  Sparkles, Link2, ArrowLeftRight
+} from 'lucide-react'
 
 interface PreviewTransaction {
   date: string
@@ -12,16 +15,52 @@ interface PreviewTransaction {
   payment_method: string
   status: string
   imported_from: string
+  category_id?: number | null
+}
+
+interface DuplicateItem {
+  arquivo: PreviewTransaction
+  existente_id: number
+  existente: {
+    id: number
+    date: string
+    type: string
+    value: number
+    description: string
+    status: string
+  }
 }
 
 interface ImportResult {
   preview: PreviewTransaction[]
-  possiveis_duplicidades: Array<{
-    arquivo: PreviewTransaction
-    existente_id: number
-  }>
+  possiveis_duplicidades: DuplicateItem[]
   total_importado: number
   total_duplicidades: number
+}
+
+interface Suggestion {
+  index: number
+  category_id: number | null
+  category_name: string | null
+  confidence: number
+}
+
+interface MatchResult {
+  index: number
+  match: {
+    type: string
+    entity: string
+    entity_id: number
+    description: string
+    expected_value: number
+    expected_date?: string
+  } | null
+}
+
+interface Category {
+  id: number
+  name: string
+  type: string
 }
 
 interface Project {
@@ -30,21 +69,29 @@ interface Project {
 }
 
 export function ImportPage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [projectId, setProjectId] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [matches, setMatches] = useState<MatchResult[]>([])
   const [uploading, setUploading] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [duplicateDecisions, setDuplicateDecisions] = useState<Record<number, 'ignore' | 'import'>>({})
+  const [transactionCategories, setTransactionCategories] = useState<Record<number, number | null>>({})
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: () => api.get('/api/financial/projects').then((r) => r.data),
+  })
+
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/api/financial/categories').then((r) => r.data),
   })
 
   const fmt = (v: number) =>
@@ -64,8 +111,12 @@ export function ImportPage() {
     if (file) {
       setSelectedFile(file)
       setImportResult(null)
+      setSuggestions([])
+      setMatches([])
       setError('')
       setSuccess('')
+      setDuplicateDecisions({})
+      setTransactionCategories({})
     }
   }
 
@@ -77,6 +128,8 @@ export function ImportPage() {
 
     setUploading(true)
     setError('')
+    setSuggestions([])
+    setMatches([])
 
     try {
       const formData = new FormData()
@@ -87,7 +140,36 @@ export function ImportPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
 
-      setImportResult(response.data)
+      const result: ImportResult = response.data
+      setImportResult(result)
+
+      // Buscar sugestões de categoria (ML)
+      if (result.preview.length > 0) {
+        try {
+          const sugResp = await api.post('/api/financial/import/suggest-categories', {
+            transactions: result.preview,
+          })
+          const sugs: Suggestion[] = sugResp.data
+          setSuggestions(sugs)
+          // Auto-aplicar sugestões com confiança alta
+          const autoCats: Record<number, number | null> = {}
+          sugs.forEach((s, i) => {
+            if (s.category_id && s.confidence >= 60) {
+              autoCats[i] = s.category_id
+            }
+          })
+          setTransactionCategories(autoCats)
+        } catch { /* ML é opcional */ }
+
+        // Buscar matches bidirecionais
+        try {
+          const matchResp = await api.post('/api/financial/import/match-receivables', {
+            transactions: result.preview,
+            project_id: Number(projectId),
+          })
+          setMatches(matchResp.data)
+        } catch { /* Match é opcional */ }
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Erro ao processar arquivo')
     } finally {
@@ -96,20 +178,37 @@ export function ImportPage() {
   }
 
   const handleConfirm = async () => {
-    if (!importResult || importResult.preview.length === 0) return
+    if (!importResult) return
+
+    // Juntar preview + duplicatas que o usuário optou por importar
+    const toImport = [
+      ...importResult.preview.map((t, i) => ({
+        ...t,
+        category_id: transactionCategories[i] || null,
+      })),
+      ...importResult.possiveis_duplicidades
+        .filter((_, i) => duplicateDecisions[i] === 'import')
+        .map((d) => d.arquivo),
+    ]
+
+    if (toImport.length === 0) return
 
     setConfirming(true)
     setError('')
 
     try {
       await api.post('/api/financial/import/confirm', {
-        transactions: importResult.preview,
+        transactions: toImport,
         project_id: Number(projectId),
       })
 
-      setSuccess(`${importResult.preview.length} transações importadas com sucesso!`)
+      setSuccess(`${toImport.length} transações importadas com sucesso!`)
       setImportResult(null)
       setSelectedFile(null)
+      setSuggestions([])
+      setMatches([])
+      setDuplicateDecisions({})
+      setTransactionCategories({})
       if (fileInput.current) fileInput.current.value = ''
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] })
@@ -125,6 +224,8 @@ export function ImportPage() {
     0
   ) || 0
 
+  const extraFromDuplicates = Object.values(duplicateDecisions).filter((d) => d === 'import').length
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -135,7 +236,7 @@ export function ImportPage() {
         <div>
           <h1 className="text-2xl font-bold">Importação OFX/CSV</h1>
           <p className="text-sm text-muted-foreground">
-            Importe transações de extratos bancários
+            Importe transações com inteligência preditiva e conciliação automática
           </p>
         </div>
       </div>
@@ -209,10 +310,10 @@ export function ImportPage() {
       {/* Preview */}
       {importResult && (
         <div className="space-y-4">
+          {/* Resumo */}
           <div className="bg-card border rounded-xl p-6">
-            <h2 className="font-semibold text-lg mb-4">2. Preview das transações</h2>
+            <h2 className="font-semibold text-lg mb-4">2. Grade de Conferência</h2>
 
-            {/* Resumo */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
               <div className="bg-green-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-green-600 font-medium">Novas</p>
@@ -228,15 +329,15 @@ export function ImportPage() {
                   {fmt(totalValue)}
                 </p>
               </div>
-              <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-600 font-medium">Formato</p>
-                <p className="text-lg font-bold text-gray-800 uppercase">
-                  {importResult.preview[0]?.imported_from || '—'}
+              <div className="bg-purple-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-purple-600 font-medium">Categorizadas (IA)</p>
+                <p className="text-lg font-bold text-purple-800">
+                  {suggestions.filter((s) => s.category_id).length}/{importResult.preview.length}
                 </p>
               </div>
             </div>
 
-            {/* Tabela preview */}
+            {/* Tabela com sugestões de categoria e matches */}
             {importResult.preview.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -246,29 +347,73 @@ export function ImportPage() {
                       <th className="text-left px-3 py-2 font-medium">Tipo</th>
                       <th className="text-left px-3 py-2 font-medium">Descrição</th>
                       <th className="text-right px-3 py-2 font-medium">Valor</th>
+                      <th className="text-left px-3 py-2 font-medium">Categoria</th>
+                      <th className="text-left px-3 py-2 font-medium">Match</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {importResult.preview.map((t, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="px-3 py-2">{fmtDate(t.date)}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                            t.type === 'Entrada'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
+                    {importResult.preview.map((t, i) => {
+                      const sug = suggestions[i]
+                      const matchItem = matches[i]
+                      return (
+                        <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="px-3 py-2 whitespace-nowrap">{fmtDate(t.date)}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                              t.type === 'Entrada'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {t.type}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 max-w-[200px] truncate" title={t.description}>
+                            {t.description}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-medium whitespace-nowrap ${
+                            t.type === 'Entrada' ? 'text-green-700' : 'text-red-700'
                           }`}>
-                            {t.type}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 max-w-[250px] truncate">{t.description}</td>
-                        <td className={`px-3 py-2 text-right font-medium ${
-                          t.type === 'Entrada' ? 'text-green-700' : 'text-red-700'
-                        }`}>
-                          {fmt(t.value)}
-                        </td>
-                      </tr>
-                    ))}
+                            {fmt(t.value)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={transactionCategories[i] || ''}
+                              onChange={(e) => setTransactionCategories((prev) => ({
+                                ...prev,
+                                [i]: e.target.value ? Number(e.target.value) : null,
+                              }))}
+                              className="text-xs border rounded px-2 py-1 max-w-[140px]"
+                            >
+                              <option value="">Sem categoria</option>
+                              {categories
+                                .filter((c) => c.type === t.type)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                            {sug?.category_id && sug.confidence >= 30 && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Sparkles className="w-3 h-3 text-purple-500" />
+                                <span className="text-[10px] text-purple-600">
+                                  {sug.category_name} ({sug.confidence}%)
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {matchItem?.match && (
+                              <div className="flex items-center gap-1">
+                                <Link2 className="w-3 h-3 text-blue-500" />
+                                <span className="text-[10px] text-blue-700 max-w-[130px] truncate block" title={matchItem.match.description}>
+                                  {matchItem.match.type === 'receivable' ? '📥 ' : '📤 '}
+                                  {matchItem.match.description}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -277,56 +422,122 @@ export function ImportPage() {
                 Todas as transações são duplicadas. Nada a importar.
               </p>
             )}
-
-            {/* Duplicidades */}
-            {importResult.possiveis_duplicidades.length > 0 && (
-              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <h3 className="font-medium text-amber-800 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  {importResult.possiveis_duplicidades.length} possível(is) duplicidade(s) ignorada(s)
-                </h3>
-                <ul className="mt-2 text-sm text-amber-700 space-y-1">
-                  {importResult.possiveis_duplicidades.slice(0, 5).map((d, i) => (
-                    <li key={i}>
-                      {fmtDate(d.arquivo.date)} — {d.arquivo.description} — {fmt(d.arquivo.value)}
-                      <span className="text-xs"> (existente #{d.existente_id})</span>
-                    </li>
-                  ))}
-                  {importResult.possiveis_duplicidades.length > 5 && (
-                    <li className="text-xs">
-                      ... e mais {importResult.possiveis_duplicidades.length - 5}
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
           </div>
 
+          {/* Side-by-side Duplicatas */}
+          {importResult.possiveis_duplicidades.length > 0 && (
+            <div className="bg-card border rounded-xl p-6">
+              <h2 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                <ArrowLeftRight className="w-5 h-5 text-amber-600" />
+                3. Análise de Duplicidades ({importResult.possiveis_duplicidades.length})
+              </h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Compare os lançamentos do arquivo com os existentes no banco. Decida para cada um.
+              </p>
+
+              <div className="space-y-3">
+                {importResult.possiveis_duplicidades.map((dup, i) => (
+                  <div key={i} className="border rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-stretch">
+                      {/* Arquivo */}
+                      <div className="p-3 bg-blue-50/50">
+                        <p className="text-[10px] font-semibold text-blue-600 uppercase mb-1">📄 Do Arquivo</p>
+                        <p className="text-sm font-medium">{dup.arquivo.description}</p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          <span>{fmtDate(dup.arquivo.date)}</span>
+                          <span className={dup.arquivo.type === 'Entrada' ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
+                            {fmt(dup.arquivo.value)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Separador */}
+                      <div className="flex items-center justify-center px-3 bg-muted/30">
+                        <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />
+                      </div>
+
+                      {/* Existente */}
+                      <div className="p-3 bg-amber-50/50">
+                        <p className="text-[10px] font-semibold text-amber-600 uppercase mb-1">🗄️ No Banco (#{dup.existente.id})</p>
+                        <p className="text-sm font-medium">{dup.existente.description}</p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          <span>{fmtDate(dup.existente.date)}</span>
+                          <span className={dup.existente.type === 'Entrada' ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
+                            {fmt(dup.existente.value)}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 rounded">
+                            {dup.existente.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ações */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/20 border-t">
+                      <button
+                        onClick={() => setDuplicateDecisions((p) => ({ ...p, [i]: 'ignore' }))}
+                        className={`text-xs px-3 py-1 rounded-full border transition ${
+                          duplicateDecisions[i] === 'ignore'
+                            ? 'bg-gray-800 text-white border-gray-800'
+                            : 'hover:bg-gray-100'
+                        }`}
+                      >
+                        Ignorar (é duplicada)
+                      </button>
+                      <button
+                        onClick={() => setDuplicateDecisions((p) => ({ ...p, [i]: 'import' }))}
+                        className={`text-xs px-3 py-1 rounded-full border transition ${
+                          duplicateDecisions[i] === 'import'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'hover:bg-blue-50'
+                        }`}
+                      >
+                        Importar mesmo assim (é outro lançamento)
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Confirmação */}
-          {importResult.preview.length > 0 && (
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setImportResult(null)
-                  setSelectedFile(null)
-                  if (fileInput.current) fileInput.current.value = ''
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted"
-              >
-                <X className="w-4 h-4" /> Cancelar
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={confirming}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {confirming ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4" />
+          {(importResult.preview.length > 0 || extraFromDuplicates > 0) && (
+            <div className="flex items-center justify-between bg-card border rounded-xl p-4">
+              <div className="text-sm text-muted-foreground">
+                Total a importar: <strong>{importResult.preview.length + extraFromDuplicates}</strong> transação(ões)
+                {extraFromDuplicates > 0 && (
+                  <span className="text-blue-600 ml-1">(+{extraFromDuplicates} de duplicatas aprovadas)</span>
                 )}
-                {confirming ? 'Importando...' : `Confirmar Importação (${importResult.preview.length})`}
-              </button>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setImportResult(null)
+                    setSelectedFile(null)
+                    setSuggestions([])
+                    setMatches([])
+                    setDuplicateDecisions({})
+                    setTransactionCategories({})
+                    if (fileInput.current) fileInput.current.value = ''
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted"
+                >
+                  <X className="w-4 h-4" /> Cancelar
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {confirming ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  {confirming ? 'Importando...' : 'Confirmar Importação'}
+                </button>
+              </div>
             </div>
           )}
         </div>

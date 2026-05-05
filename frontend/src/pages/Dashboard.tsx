@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
+import { useState } from 'react'
 import {
   DollarSign, TrendingUp, TrendingDown, Users,
-  ArrowUpRight, ArrowDownRight
+  ArrowUpRight, ArrowDownRight, Filter
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -20,15 +21,28 @@ interface FinancialSummary {
   pending_payables: number
 }
 
+interface Project {
+  id: number
+  name: string
+}
+
 const PIE_COLORS = ['#2563eb', '#16a34a', '#dc2626', '#d97706', '#7c3aed', '#0891b2', '#be185d', '#65a30d']
 
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
+  const [selectedProject, setSelectedProject] = useState<number | undefined>(undefined)
+  const canSeeFinancial = ['super_admin', 'financeiro', 'pastor'].includes(user?.role || '')
+
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ['projects-list'],
+    queryFn: () => api.get('/api/financial/projects').then((r) => r.data),
+    enabled: canSeeFinancial,
+  })
 
   const { data: summary, isLoading } = useQuery<FinancialSummary>({
-    queryKey: ['financial-dashboard'],
-    queryFn: () => api.get('/api/financial/dashboard').then((r) => r.data),
-    enabled: ['super_admin', 'financeiro', 'pastor'].includes(user?.role || ''),
+    queryKey: ['financial-dashboard', selectedProject],
+    queryFn: () => api.get('/api/financial/dashboard', { params: { project_id: selectedProject } }).then((r) => r.data),
+    enabled: canSeeFinancial,
   })
 
   const { data: memberCount } = useQuery({
@@ -37,15 +51,27 @@ export function DashboardPage() {
   })
 
   const { data: monthlyData } = useQuery<{ month: string; entradas: number; saidas: number }[]>({
-    queryKey: ['charts-monthly'],
-    queryFn: () => api.get('/api/financial/charts/monthly').then((r) => r.data),
-    enabled: ['super_admin', 'financeiro', 'pastor'].includes(user?.role || ''),
+    queryKey: ['charts-monthly', selectedProject],
+    queryFn: () => api.get('/api/financial/charts/monthly', { params: { project_id: selectedProject } }).then((r) => r.data),
+    enabled: canSeeFinancial,
   })
 
   const { data: projectData } = useQuery<{ name: string; value: number }[]>({
     queryKey: ['charts-by-project'],
     queryFn: () => api.get('/api/financial/charts/by-project').then((r) => r.data),
-    enabled: ['super_admin', 'financeiro', 'pastor'].includes(user?.role || ''),
+    enabled: canSeeFinancial && !selectedProject,
+  })
+
+  const { data: categoryData } = useQuery<{ name: string; type: string; value: number }[]>({
+    queryKey: ['charts-by-category', selectedProject],
+    queryFn: () => api.get('/api/financial/charts/by-category', { params: { project_id: selectedProject } }).then((r) => r.data),
+    enabled: canSeeFinancial,
+  })
+
+  const { data: paymentMethodData } = useQuery<{ name: string; value: number; count: number }[]>({
+    queryKey: ['charts-by-payment-method', selectedProject],
+    queryFn: () => api.get('/api/financial/charts/by-payment-method', { params: { project_id: selectedProject } }).then((r) => r.data),
+    enabled: canSeeFinancial,
   })
 
   const formatCurrency = (value: number) =>
@@ -94,11 +120,30 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Bem-vindo, {user?.name}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Bem-vindo, {user?.name}
+          </p>
+        </div>
+
+        {/* Filtro Global por Projeto */}
+        {canSeeFinancial && projects && (
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            <select
+              value={selectedProject || ''}
+              onChange={(e) => setSelectedProject(e.target.value ? Number(e.target.value) : undefined)}
+              className="border rounded-lg px-3 py-2 text-sm bg-card min-w-[200px]"
+            >
+              <option value="">Todos os projetos</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Cards principais */}
@@ -143,7 +188,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Gráficos */}
+      {/* Gráficos - Linha 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card rounded-xl border p-6 min-h-[300px]">
           <h3 className="font-semibold mb-4">Entradas vs Saídas (Mensal)</h3>
@@ -165,13 +210,42 @@ export function DashboardPage() {
             </div>
           )}
         </div>
+
+        {/* Gráfico por Categoria */}
         <div className="bg-card rounded-xl border p-6 min-h-[300px]">
-          <h3 className="font-semibold mb-4">Distribuição por Projeto</h3>
-          {projectData && projectData.length > 0 ? (
+          <h3 className="font-semibold mb-4">Acumulado por Categoria</h3>
+          {categoryData && categoryData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={categoryData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tickFormatter={(v) => `R$${(v / 1000).toFixed(1)}k`} />
+                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} />
+                <Bar dataKey="value" name="Valor" radius={[0, 4, 4, 0]}>
+                  {categoryData.map((entry, i) => (
+                    <Cell key={i} fill={entry.type === 'Entrada' ? '#16a34a' : '#dc2626'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[250px]">
+              <p className="text-muted-foreground text-sm">Nenhuma transação categorizada</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Gráficos - Linha 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Por Forma de Pagamento */}
+        <div className="bg-card rounded-xl border p-6 min-h-[300px]">
+          <h3 className="font-semibold mb-4">Por Forma de Pagamento</h3>
+          {paymentMethodData && paymentMethodData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
                 <Pie
-                  data={projectData}
+                  data={paymentMethodData}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -179,7 +253,7 @@ export function DashboardPage() {
                   outerRadius={90}
                   label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                 >
-                  {projectData.map((_, i) => (
+                  {paymentMethodData.map((_, i) => (
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
@@ -188,10 +262,41 @@ export function DashboardPage() {
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-[250px]">
-              <p className="text-muted-foreground text-sm">Nenhum projeto com transações</p>
+              <p className="text-muted-foreground text-sm">Nenhuma transação registrada</p>
             </div>
           )}
         </div>
+
+        {/* Distribuição por Projeto */}
+        {!selectedProject && (
+          <div className="bg-card rounded-xl border p-6 min-h-[300px]">
+            <h3 className="font-semibold mb-4">Distribuição por Projeto</h3>
+            {projectData && projectData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={projectData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                  >
+                    {projectData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[250px]">
+                <p className="text-muted-foreground text-sm">Nenhum projeto com transações</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

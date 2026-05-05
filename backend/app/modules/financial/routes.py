@@ -44,6 +44,39 @@ async def create_category(
     return cat
 
 
+@router.put("/categories/{category_id}", response_model=CategoryResponse)
+async def update_category(
+    category_id: int,
+    data: CategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    result = await db.execute(select(Category).where(Category.id == category_id))
+    cat = result.scalar_one_or_none()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+    for field, value in data.model_dump().items():
+        setattr(cat, field, value)
+    await db.flush()
+    await db.refresh(cat)
+    return cat
+
+
+@router.delete("/categories/{category_id}")
+async def delete_category(
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    result = await db.execute(select(Category).where(Category.id == category_id))
+    cat = result.scalar_one_or_none()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+    cat.is_active = False
+    await db.flush()
+    return {"detail": "Categoria desativada"}
+
+
 # ============ PROJECTS ============
 
 @router.get("/projects", response_model=list[ProjectResponse])
@@ -415,6 +448,221 @@ async def chart_by_project(
     return [{"name": row.project_name, "value": round(row.total, 2)} for row in rows]
 
 
+@router.get("/charts/by-category")
+async def chart_by_category(
+    project_id: Optional[int] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
+):
+    """Distribuição de valores por categoria (entrada e saída separados)."""
+    query = (
+        select(
+            Category.name.label('category_name'),
+            Transaction.type,
+            func.coalesce(func.sum(Transaction.value), 0).label('total')
+        )
+        .join(Category, Transaction.category_id == Category.id)
+    )
+    if project_id:
+        query = query.where(Transaction.project_id == project_id)
+    if start_date:
+        query = query.where(Transaction.date >= start_date)
+    if end_date:
+        query = query.where(Transaction.date <= end_date)
+
+    query = query.group_by(Category.id, Category.name, Transaction.type)
+    rows = (await db.execute(query)).all()
+
+    return [{"name": row.category_name, "type": row.type, "value": round(row.total, 2)} for row in rows]
+
+
+@router.get("/charts/by-payment-method")
+async def chart_by_payment_method(
+    project_id: Optional[int] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
+):
+    """Distribuição de valores por forma de pagamento."""
+    query = select(
+        func.coalesce(Transaction.payment_method, 'Não informado').label('method'),
+        func.sum(Transaction.value).label('total'),
+        func.count(Transaction.id).label('count')
+    )
+    if project_id:
+        query = query.where(Transaction.project_id == project_id)
+    if start_date:
+        query = query.where(Transaction.date >= start_date)
+    if end_date:
+        query = query.where(Transaction.date <= end_date)
+
+    query = query.group_by(func.coalesce(Transaction.payment_method, 'Não informado'))
+    rows = (await db.execute(query)).all()
+
+    return [{"name": row.method, "value": round(row.total, 2), "count": row.count} for row in rows]
+
+
+@router.post("/import/suggest-categories")
+async def suggest_categories(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    """
+    Inteligência Preditiva: sugere categorias para transações importadas
+    baseando-se no histórico de descrições, beneficiários e valores.
+    Body: { "transactions": [{"description": str, "value": float, "type": str}, ...] }
+    """
+    transactions = payload.get("transactions", [])
+    if not transactions:
+        return []
+
+    # Buscar histórico de transações com categoria definida
+    history_result = await db.execute(
+        select(Transaction.description, Transaction.value, Transaction.type, Transaction.category_id)
+        .where(Transaction.category_id.isnot(None))
+        .order_by(Transaction.created_at.desc())
+        .limit(500)
+    )
+    history = history_result.all()
+
+    # Buscar categorias
+    cats_result = await db.execute(select(Category).where(Category.is_active == True))
+    categories = {c.id: {"id": c.id, "name": c.name, "type": c.type} for c in cats_result.scalars().all()}
+
+    suggestions = []
+    for tx in transactions:
+        desc = (tx.get("description") or "").strip().lower()
+        tx_value = tx.get("value", 0)
+        tx_type = tx.get("type", "")
+        best_cat_id = None
+        best_score = 0
+
+        for h in history:
+            if h.type != tx_type:
+                continue
+            score = 0
+            h_desc = (h.description or "").strip().lower()
+
+            # Score por descrição (palavras em comum)
+            if h_desc and desc:
+                words_tx = set(desc.split())
+                words_h = set(h_desc.split())
+                common = words_tx & words_h
+                if common:
+                    score += len(common) / max(len(words_tx), 1) * 70
+
+            # Score por valor similar (±10%)
+            if h.value and tx_value:
+                ratio = min(h.value, tx_value) / max(h.value, tx_value) if max(h.value, tx_value) > 0 else 0
+                if ratio > 0.9:
+                    score += 30
+
+            if score > best_score and h.category_id in categories:
+                best_score = score
+                best_cat_id = h.category_id
+
+        suggestion = {"index": len(suggestions), "category_id": None, "category_name": None, "confidence": 0}
+        if best_cat_id and best_score >= 30:
+            suggestion["category_id"] = best_cat_id
+            suggestion["category_name"] = categories[best_cat_id]["name"]
+            suggestion["confidence"] = min(round(best_score), 100)
+        suggestions.append(suggestion)
+
+    return suggestions
+
+
+@router.post("/import/match-receivables")
+async def match_receivables(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    """
+    Match Bidirecional: cruza transações importadas com:
+    - Entradas → Contas a Receber (ParticipantEvent pendentes + RetreatPayment pendentes)
+    - Saídas → Transações provisionadas (status=Previsto, tipo=Saída)
+    Body: { "transactions": [...], "project_id": int }
+    """
+    from ..retreat.models import RetreatPayment, RetreatParticipant, Retreat
+
+    transactions = payload.get("transactions", [])
+    matches = []
+
+    # Buscar contas a receber pendentes (parcelas de retiro)
+    pending_payments = await db.execute(
+        select(RetreatPayment, RetreatParticipant, Retreat)
+        .join(RetreatParticipant, RetreatPayment.participant_id == RetreatParticipant.id)
+        .join(Retreat, RetreatPayment.retreat_id == Retreat.id)
+        .where(RetreatPayment.status == "Pendente")
+    )
+    receivables = pending_payments.all()
+
+    # Buscar saídas provisionadas
+    provisioned = await db.execute(
+        select(Transaction)
+        .where(Transaction.status == "Previsto", Transaction.type == "Saída")
+    )
+    provisioned_list = provisioned.scalars().all()
+
+    for idx, tx in enumerate(transactions):
+        tx_value = tx.get("value", 0)
+        tx_type = tx.get("type", "")
+        tx_desc = (tx.get("description") or "").lower()
+        match_info = None
+
+        if tx_type == "Entrada":
+            # Tentar match com parcelas pendentes
+            for payment, participant, retreat in receivables:
+                if abs(payment.value - tx_value) <= 0.03:
+                    p_name = participant.name or f"Membro #{participant.member_id}"
+                    match_info = {
+                        "type": "receivable",
+                        "entity": "RetreatPayment",
+                        "entity_id": payment.id,
+                        "description": f"{retreat.name} - {p_name} - Parcela {payment.installment_number}",
+                        "expected_value": payment.value,
+                    }
+                    break
+
+        elif tx_type == "Saída":
+            # Tentar match com provisionados
+            for prov in provisioned_list:
+                value_ok = abs(prov.value - tx_value) <= 0.03
+                desc_ok = False
+                if tx_desc and prov.description:
+                    prov_desc = prov.description.lower()
+                    words = set(tx_desc.split()) & set(prov_desc.split())
+                    desc_ok = len(words) >= 2 or tx_desc in prov_desc or prov_desc in tx_desc
+
+                if value_ok and desc_ok:
+                    match_info = {
+                        "type": "provisioned",
+                        "entity": "Transaction",
+                        "entity_id": prov.id,
+                        "description": prov.description,
+                        "expected_value": prov.value,
+                        "expected_date": str(prov.date),
+                    }
+                    break
+                elif value_ok:
+                    match_info = {
+                        "type": "provisioned_value_only",
+                        "entity": "Transaction",
+                        "entity_id": prov.id,
+                        "description": prov.description,
+                        "expected_value": prov.value,
+                        "expected_date": str(prov.date),
+                    }
+
+        matches.append({"index": idx, "match": match_info})
+
+    return matches
+
+
 # ============ AUDIT LOGS ============
 
 @router.get("/audit-logs", response_model=list[AuditLogResponse])
@@ -524,7 +772,18 @@ async def import_transactions(
                 desc_ok = (ex.description or "").strip().lower() == tx["description"].strip().lower()
                 if valor_ok and data_ok and desc_ok:
                     is_dup = True
-                    duplicates.append({"arquivo": tx, "existente_id": ex.id})
+                    duplicates.append({
+                        "arquivo": tx,
+                        "existente_id": ex.id,
+                        "existente": {
+                            "id": ex.id,
+                            "date": str(ex.date),
+                            "type": ex.type,
+                            "value": ex.value,
+                            "description": ex.description,
+                            "status": ex.status,
+                        }
+                    })
                     break
             except Exception:
                 continue
@@ -561,6 +820,7 @@ async def confirm_import(
             value=tx_data["value"],
             description=tx_data.get("description"),
             payment_method=tx_data.get("payment_method", "Transferência Bancária"),
+            category_id=tx_data.get("category_id"),
             project_id=project_id,
             status=tx_data.get("status", "Previsto"),
             imported_from=tx_data.get("imported_from", "manual"),
