@@ -27,13 +27,14 @@ def create_app() -> FastAPI:
     )
 
     # CORS
-    origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",")]
+    origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins if not settings.DEBUG else ["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        allow_origin_regex=r"https://.*\.vercel\.app" if not settings.DEBUG else None,
     )
 
     # Register routers
