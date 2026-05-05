@@ -125,6 +125,26 @@ async def update_project(
     return project
 
 
+@router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin"))
+):
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    # Remove transações vinculadas primeiro
+    await db.execute(
+        select(Transaction).where(Transaction.project_id == project_id)
+    )
+    from sqlalchemy import delete as sa_delete
+    await db.execute(sa_delete(Transaction).where(Transaction.project_id == project_id))
+    await db.delete(project)
+    return {"detail": "Projeto excluído"}
+
+
 @router.get("/projects/{project_id}/dashboard", response_model=ProjectDashboard)
 async def project_dashboard(
     project_id: int,

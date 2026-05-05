@@ -69,3 +69,17 @@ async def update_feedback(
     await db.flush()
     await db.refresh(feedback)
     return feedback
+
+
+@router.delete("/{feedback_id}")
+async def delete_feedback(
+    feedback_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin"))
+):
+    result = await db.execute(select(Feedback).where(Feedback.id == feedback_id))
+    feedback = result.scalar_one_or_none()
+    if not feedback:
+        raise HTTPException(status_code=404, detail="Feedback não encontrado")
+    await db.delete(feedback)
+    return {"detail": "Feedback excluído"}

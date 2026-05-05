@@ -9,6 +9,7 @@ const API_URL = process.env.API_URL || "http://127.0.0.1:8001";
 
 export default defineConfig({
   testDir: "./tests",
+  globalTeardown: "./global-teardown.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
