@@ -1,11 +1,20 @@
-# Deploy configuration for Render.com (free tier)
+# ============================================================
+# Render.com - Deploy Configuration (Free Tier)
+# ============================================================
+# Para deploy: conecte este repo no dashboard.render.com
+# O Render lê este arquivo automaticamente (Blueprint)
+# ============================================================
+
 services:
   - type: web
     name: iers-api
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    region: oregon
     rootDir: backend
+    buildCommand: pip install -r requirements.txt && python seed.py
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -13,10 +22,23 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 480
+      - key: APP_NAME
+        value: IERS Sistema Integrado
+      - key: APP_VERSION
+        value: 2.0.0
+      - key: DEBUG
+        value: "False"
       - key: ALLOWED_ORIGINS
-        value: https://iers-sistema.vercel.app
+        value: https://controle-financeiro-iers.vercel.app
+      - key: PYTHON_VERSION
+        value: "3.12"
 
 databases:
   - name: iers-db
     plan: free
     databaseName: iers_db
+    region: oregon
