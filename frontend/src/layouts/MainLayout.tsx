@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+const logoImg = '/logo.png'
+
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['super_admin', 'pastor', 'financeiro', 'secretaria'] },
   { name: 'Financeiro', href: '/financeiro', icon: DollarSign, roles: ['super_admin', 'pastor', 'financeiro'] },
@@ -48,9 +50,12 @@ export function MainLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="p-5 border-b border-white/10">
-          <h1 className="text-xl font-bold">IERS</h1>
-          <p className="text-xs text-blue-200 mt-0.5">Sistema Integrado</p>
+        <div className="p-5 border-b border-white/10 flex items-center gap-3">
+          <img src={logoImg} alt="IERS" className="w-10 h-10 rounded" />
+          <div>
+            <h1 className="text-xl font-bold">IERS</h1>
+            <p className="text-xs text-blue-200 mt-0.5">Sistema Integrado</p>
+          </div>
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
@@ -98,7 +103,10 @@ export function MainLayout() {
           <button onClick={() => setSidebarOpen(true)} className="p-1.5">
             <Menu className="w-6 h-6" />
           </button>
-          <h2 className="font-bold text-lg">IERS</h2>
+          <div className="flex items-center gap-2">
+            <img src={logoImg} alt="IERS" className="w-7 h-7 rounded" />
+            <h2 className="font-bold text-lg">IERS</h2>
+          </div>
           <div className="w-8" />
         </header>
 

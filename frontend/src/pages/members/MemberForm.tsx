@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Camera, Trash2 } from 'lucide-react'
 
 interface MemberData {
   ficha_num?: number | null
@@ -33,6 +33,7 @@ interface MemberData {
   deseja_ministerio?: boolean
   qual_ministerio?: string | null
   data_membresia?: string | null
+  foto_perfil?: string | null
   observacoes?: string | null
 }
 
@@ -64,7 +65,36 @@ const initialData: MemberData = {
   deseja_ministerio: false,
   qual_ministerio: '',
   data_membresia: null,
+  foto_perfil: null,
   observacoes: '',
+}
+
+/** Redimensiona e comprime a imagem para thumbnail (max 200x200, JPEG 70%) */
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX = 200
+        let w = img.width
+        let h = img.height
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+        else { w = Math.round(w * MAX / h); h = MAX }
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, w, h)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+        resolve(dataUrl)
+      }
+      img.onerror = () => reject(new Error('Erro ao carregar imagem'))
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error('Erro ao ler arquivo'))
+    reader.readAsDataURL(file)
+  })
 }
 
 export function MemberForm() {
@@ -74,6 +104,22 @@ export function MemberForm() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<MemberData>(initialData)
   const [error, setError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('Selecione um arquivo de imagem válido')
+      return
+    }
+    try {
+      const dataUrl = await compressImage(file)
+      setForm((prev) => ({ ...prev, foto_perfil: dataUrl }))
+    } catch {
+      setError('Erro ao processar imagem')
+    }
+  }
 
   // Carregar dados se editando
   const { data: existingMember } = useQuery({
@@ -136,6 +182,54 @@ export function MemberForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Seção: Foto do Membro */}
+        <fieldset className="bg-card border rounded-xl p-5 space-y-4">
+          <legend className="text-sm font-bold text-primary px-2">Foto do Membro</legend>
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              {form.foto_perfil ? (
+                <img
+                  src={form.foto_perfil}
+                  alt="Foto do membro"
+                  className="w-24 h-24 rounded-full object-cover border-2 border-primary/20"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-gray-300">
+                  <Camera className="w-8 h-8 text-muted-foreground" />
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted transition"
+              >
+                <Camera className="w-4 h-4" />
+                {form.foto_perfil ? 'Trocar Foto' : 'Adicionar Foto'}
+              </button>
+              {form.foto_perfil && (
+                <button
+                  type="button"
+                  onClick={() => setForm((prev) => ({ ...prev, foto_perfil: null }))}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Remover Foto
+                </button>
+              )}
+              <p className="text-xs text-muted-foreground">JPG, PNG ou WebP. Será redimensionada para 200x200px.</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoSelect}
+                className="hidden"
+              />
+            </div>
+          </div>
+        </fieldset>
+
         {/* Seção: Dados Pessoais */}
         <fieldset className="bg-card border rounded-xl p-5 space-y-4">
           <legend className="text-sm font-bold text-primary px-2">Dados Pessoais</legend>

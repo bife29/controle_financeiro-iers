@@ -1,13 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
-from typing import Optional
+from typing import Optional, List
+from pydantic import BaseModel
 from ...core.database import get_db
 from ...core.security import get_current_user, require_roles
 from .models import Member
 from .schemas import MemberCreate, MemberUpdate, MemberResponse, MemberSummary
 
 router = APIRouter(prefix="/api/members", tags=["Membros"])
+
+
+class PhotoUpload(BaseModel):
+    foto_perfil: str  # base64 data URI
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: List[int]
 
 
 @router.get("/", response_model=list[MemberResponse])
@@ -131,7 +140,7 @@ async def update_member(
 async def delete_member(
     member_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin"))
+    current_user=Depends(require_roles("super_admin", "pastor"))
 ):
     result = await db.execute(select(Member).where(Member.id == member_id))
     member = result.scalar_one_or_none()
@@ -140,3 +149,62 @@ async def delete_member(
     member.is_active = False  # Soft delete
     await db.flush()
     return {"detail": "Membro desativado"}
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_members(
+    data: BulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "pastor"))
+):
+    if not data.ids or len(data.ids) > 100:
+        raise HTTPException(status_code=400, detail="Envie entre 1 e 100 IDs")
+    result = await db.execute(select(Member).where(Member.id.in_(data.ids)))
+    members = result.scalars().all()
+    count = 0
+    for member in members:
+        if member.is_active:
+            member.is_active = False
+            count += 1
+    await db.flush()
+    return {"detail": f"{count} membro(s) desativado(s)"}
+
+
+@router.put("/{member_id}/photo")
+async def upload_member_photo(
+    member_id: int,
+    data: PhotoUpload,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+):
+    # Validar que é um data URI de imagem válido
+    if not data.foto_perfil.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="Formato inválido. Envie data:image/...")
+    # Limitar tamanho (~50KB base64 = imagem razoável)
+    if len(data.foto_perfil) > 100_000:
+        raise HTTPException(status_code=400, detail="Imagem muito grande. Máximo ~50KB após compressão")
+    
+    result = await db.execute(select(Member).where(Member.id == member_id))
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Membro não encontrado")
+    
+    member.foto_perfil = data.foto_perfil
+    await db.flush()
+    await db.refresh(member)
+    return {"detail": "Foto atualizada", "foto_perfil": member.foto_perfil}
+
+
+@router.delete("/{member_id}/photo")
+async def delete_member_photo(
+    member_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+):
+    result = await db.execute(select(Member).where(Member.id == member_id))
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Membro não encontrado")
+    member.foto_perfil = None
+    await db.flush()
+    return {"detail": "Foto removida"}

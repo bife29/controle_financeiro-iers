@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Text, func
 from ...core.database import Base
 
 
@@ -50,7 +50,7 @@ class Member(Base):
     data_membresia = Column(Date, nullable=True)
 
     # Foto e observações
-    foto_perfil = Column(String(500), nullable=True)
+    foto_perfil = Column(Text, nullable=True)  # Base64 data URI (thumbnail ~10-20KB)
     observacoes = Column(String(1000), nullable=True)
 
     # Controle

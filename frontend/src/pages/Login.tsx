@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 
+const logoImg = '/logo.png'
+
 export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -30,6 +32,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-purple-700 p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8">
         <div className="text-center mb-8">
+          <img src={logoImg} alt="IERS" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
           <h1 className="text-2xl font-bold text-gray-900">IERS</h1>
           <p className="text-sm text-muted-foreground mt-1">Sistema Integrado</p>
         </div>
