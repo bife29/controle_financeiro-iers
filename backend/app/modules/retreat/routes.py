@@ -189,18 +189,20 @@ async def delete_retreat(
     if not retreat:
         raise HTTPException(status_code=404, detail="Retiro não encontrado")
 
-    # Remover pagamentos, participantes e retiro
+    # Remover pagamentos, participantes e retiro (respeitando FK order)
     payments = await db.execute(
         select(RetreatPayment).where(RetreatPayment.retreat_id == retreat_id)
     )
     for p in payments.scalars().all():
         await db.delete(p)
+    await db.flush()
 
     participants = await db.execute(
         select(RetreatParticipant).where(RetreatParticipant.retreat_id == retreat_id)
     )
     for p in participants.scalars().all():
         await db.delete(p)
+    await db.flush()
 
     await db.delete(retreat)
     await db.flush()
@@ -407,12 +409,13 @@ async def remove_participant(
 
     retreat_id = participant.retreat_id
 
-    # Remover pagamentos associados
+    # Remover pagamentos associados (flush antes de deletar participante por FK)
     payments = await db.execute(
         select(RetreatPayment).where(RetreatPayment.participant_id == participant_id)
     )
     for p in payments.scalars().all():
         await db.delete(p)
+    await db.flush()
 
     await db.delete(participant)
     await db.flush()

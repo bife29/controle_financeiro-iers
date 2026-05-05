@@ -10,7 +10,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
 /**
  * Global teardown: apaga todos os dados criados pelos testes E2E em produção.
- * Identifica dados de teste por padrões de nome (E2E, Teste, BuscaTeste, UITest, etc.)
+ * Ordem correta: retiros → transações → projetos → membros → feedbacks → usuários
  */
 async function globalTeardown() {
   console.log("\n🧹 Limpando dados de teste em produção...\n");
@@ -31,14 +31,15 @@ async function globalTeardown() {
   const { access_token } = await loginResp.json();
   const headers = { Authorization: `Bearer ${access_token}` };
 
-  // 1. Limpar retiros de teste (cascateia participantes e pagamentos)
+  // Padrão para identificar dados de teste
+  const TEST_PATTERN = /e2e|teste|test|ui.?test|playwright|p[1-6]\s*-|para remover|retirante|convidado|visitante|criança|duplicado|busca.?teste|contato|fallback|detalhe/i;
+
+  // 1. Limpar retiros de teste PRIMEIRO (cascateia participantes e pagamentos via API)
   try {
     const retreatsResp = await context.get("/api/retreats/", { headers });
     if (retreatsResp.ok()) {
       const retreats = await retreatsResp.json();
-      const testRetreats = retreats.filter((r: any) =>
-        /e2e|teste|test|ui.?test/i.test(r.name)
-      );
+      const testRetreats = retreats.filter((r: any) => TEST_PATTERN.test(r.name));
       for (const retreat of testRetreats) {
         const del = await context.delete(`/api/retreats/${retreat.id}`, { headers });
         if (del.ok()) {
@@ -52,13 +53,13 @@ async function globalTeardown() {
     console.log("  ⚠️ Erro ao limpar retiros:", e);
   }
 
-  // 2. Limpar transações de teste
+  // 2. Limpar transações de teste (limit alto para pegar todas)
   try {
-    const txResp = await context.get("/api/financial/transactions", { headers });
+    const txResp = await context.get("/api/financial/transactions?limit=500", { headers });
     if (txResp.ok()) {
       const transactions = await txResp.json();
       const testTx = transactions.filter((t: any) =>
-        /e2e|teste|test/i.test(t.description || "")
+        TEST_PATTERN.test(t.description || "")
       );
       for (const tx of testTx) {
         const del = await context.delete(`/api/financial/transactions/${tx.id}`, { headers });
@@ -73,34 +74,13 @@ async function globalTeardown() {
     console.log("  ⚠️ Erro ao limpar transações:", e);
   }
 
-  // 3. Limpar membros de teste
-  try {
-    const membersResp = await context.get("/api/members/", { headers });
-    if (membersResp.ok()) {
-      const members = await membersResp.json();
-      const testMembers = members.filter((m: any) =>
-        /e2e|teste|test|busca.?teste|ui.?test|detalhe|fallback/i.test(m.name)
-      );
-      for (const member of testMembers) {
-        const del = await context.delete(`/api/members/${member.id}`, { headers });
-        if (del.ok()) {
-          console.log(`  ✅ Membro deletado: ${member.name}`);
-        } else {
-          console.log(`  ⚠️ Falha ao deletar membro ${member.id}: ${del.status()}`);
-        }
-      }
-    }
-  } catch (e) {
-    console.log("  ⚠️ Erro ao limpar membros:", e);
-  }
-
-  // 4. Limpar projetos financeiros de teste
+  // 3. Limpar projetos financeiros de teste (após transações)
   try {
     const projResp = await context.get("/api/financial/projects", { headers });
     if (projResp.ok()) {
       const projects = await projResp.json();
       const testProjects = projects.filter((p: any) =>
-        /e2e|teste|test/i.test(p.name) && p.name !== "Geral/Dízimos"
+        TEST_PATTERN.test(p.name) && !/geral|d[ií]zimos/i.test(p.name)
       );
       for (const project of testProjects) {
         const del = await context.delete(`/api/financial/projects/${project.id}`, { headers });
@@ -115,13 +95,32 @@ async function globalTeardown() {
     console.log("  ⚠️ Erro ao limpar projetos:", e);
   }
 
+  // 4. Limpar membros de teste
+  try {
+    const membersResp = await context.get("/api/members/", { headers });
+    if (membersResp.ok()) {
+      const members = await membersResp.json();
+      const testMembers = members.filter((m: any) => TEST_PATTERN.test(m.name));
+      for (const member of testMembers) {
+        const del = await context.delete(`/api/members/${member.id}`, { headers });
+        if (del.ok()) {
+          console.log(`  ✅ Membro deletado: ${member.name}`);
+        } else {
+          console.log(`  ⚠️ Falha ao deletar membro ${member.id}: ${del.status()}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.log("  ⚠️ Erro ao limpar membros:", e);
+  }
+
   // 5. Limpar feedbacks de teste
   try {
     const fbResp = await context.get("/api/feedback/", { headers });
     if (fbResp.ok()) {
       const feedbacks = await fbResp.json();
       const testFb = feedbacks.filter((f: any) =>
-        /e2e|teste|test|playwright/i.test(f.title || f.message || "")
+        TEST_PATTERN.test(f.title || f.message || "")
       );
       for (const fb of testFb) {
         const del = await context.delete(`/api/feedback/${fb.id}`, { headers });
@@ -136,7 +135,7 @@ async function globalTeardown() {
     console.log("  ⚠️ Erro ao limpar feedbacks:", e);
   }
 
-  // 6. Limpar usuários de teste (que escaparam do cleanup individual)
+  // 6. Limpar usuários de teste
   try {
     const usersResp = await context.get("/api/auth/users", { headers });
     if (usersResp.ok()) {

@@ -135,12 +135,35 @@ async def delete_project(
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    # Remove transações vinculadas primeiro
-    await db.execute(
-        select(Transaction).where(Transaction.project_id == project_id)
+
+    # Desassociar pagamentos de retiro que referenciam transações deste projeto
+    from ..retreat.models import RetreatPayment
+    from sqlalchemy import delete as sa_delete, update as sa_update
+    tx_ids_result = await db.execute(
+        select(Transaction.id).where(Transaction.project_id == project_id)
     )
-    from sqlalchemy import delete as sa_delete
+    tx_ids = [r[0] for r in tx_ids_result.all()]
+    if tx_ids:
+        await db.execute(
+            sa_update(RetreatPayment)
+            .where(RetreatPayment.transaction_id.in_(tx_ids))
+            .values(transaction_id=None)
+        )
+        await db.flush()
+
+    # Remove transações vinculadas
     await db.execute(sa_delete(Transaction).where(Transaction.project_id == project_id))
+    await db.flush()
+
+    # Remove retiros vinculados a este projeto (se houver)
+    from ..retreat.models import Retreat
+    retreats_result = await db.execute(
+        select(Retreat).where(Retreat.project_id == project_id)
+    )
+    for retreat in retreats_result.scalars().all():
+        retreat.project_id = None
+    await db.flush()
+
     await db.delete(project)
     return {"detail": "Projeto excluído"}
 
