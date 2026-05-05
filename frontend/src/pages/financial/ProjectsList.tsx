@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { Plus, Edit2, Eye, ArrowLeft } from 'lucide-react'
@@ -21,8 +21,6 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function ProjectsList() {
-  const queryClient = useQueryClient()
-
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: () => api.get('/api/financial/projects').then((r) => r.data),

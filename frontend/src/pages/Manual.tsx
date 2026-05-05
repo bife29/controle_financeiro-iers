@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import {
   BookOpen, LayoutDashboard, DollarSign, Users, Mountain,
   MessageSquare, ShieldCheck, ChevronDown, ChevronRight,
-  ArrowRight, CheckCircle2, XCircle, LogIn, HelpCircle
+  ArrowRight, LogIn, HelpCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -89,12 +89,6 @@ function Accordion({ title, children, defaultOpen = false }: { title: string; ch
       {open && <div className="px-4 py-3 text-sm text-gray-700 space-y-3">{children}</div>}
     </div>
   )
-}
-
-function PermissionBadge({ allowed }: { allowed: boolean }) {
-  return allowed
-    ? <CheckCircle2 className="w-4 h-4 text-green-500 inline" />
-    : <XCircle className="w-4 h-4 text-red-400 inline" />
 }
 
 // ============ SECTION CONTENT ============
