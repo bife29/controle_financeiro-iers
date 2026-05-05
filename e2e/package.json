@@ -1,0 +1,19 @@
+{
+  "name": "iers-e2e-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:api": "playwright test --project=api",
+    "test:frontend": "playwright test --project=chromium",
+    "test:all-browsers": "playwright test --project=chromium --project=firefox --project=webkit",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "@types/node": "^20.12.0",
+    "dotenv": "^16.4.5"
+  }
+}
