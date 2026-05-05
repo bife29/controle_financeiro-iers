@@ -17,7 +17,13 @@ else:
     if "sslmode=" in db_url:
         db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
         connect_args["ssl"] = ssl_module.create_default_context()
-    engine = create_async_engine(db_url, echo=settings.DEBUG, connect_args=connect_args)
+    engine = create_async_engine(
+        db_url,
+        echo=settings.DEBUG,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_recycle=300,
+    )
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
