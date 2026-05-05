@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { getAuthHeaders } from "../../helpers/auth";
+import { getAuthHeaders, API_URL } from "../../helpers/auth";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -62,7 +62,7 @@ test.describe("Retiros - UI", () => {
   test("abre detalhe do retiro com dashboard", async ({ page, request }) => {
     // Criar retiro via API para garantir dados
     const headers = await getAuthHeaders(request);
-    const resp = await request.post("/api/retreats/", {
+    const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
         name: `Dashboard UI ${Date.now()}`,
@@ -91,7 +91,7 @@ test.describe("Retiros - UI", () => {
 
   test("página de participantes exibe tabela e botão de inscrição", async ({ page, request }) => {
     const headers = await getAuthHeaders(request);
-    const resp = await request.post("/api/retreats/", {
+    const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
         name: `Participantes UI ${Date.now()}`,
@@ -120,7 +120,7 @@ test.describe("Retiros - UI", () => {
 
   test("modal de inscrição abre com opções membro/visitante", async ({ page, request }) => {
     const headers = await getAuthHeaders(request);
-    const resp = await request.post("/api/retreats/", {
+    const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
         name: `Modal UI ${Date.now()}`,
@@ -148,7 +148,7 @@ test.describe("Retiros - UI", () => {
 
   test("inscreve visitante e verifica na tabela", async ({ page, request }) => {
     const headers = await getAuthHeaders(request);
-    const resp = await request.post("/api/retreats/", {
+    const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
         name: `Inscrição UI ${Date.now()}`,
@@ -189,7 +189,7 @@ test.describe("Retiros - UI", () => {
     const headers = await getAuthHeaders(request);
 
     // Criar retiro + participante via API
-    const retreatResp = await request.post("/api/retreats/", {
+    const retreatResp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
         name: `Carnê UI ${Date.now()}`,
@@ -202,7 +202,7 @@ test.describe("Retiros - UI", () => {
     });
     const retreat = await retreatResp.json();
 
-    const partResp = await request.post(`/api/retreats/${retreat.id}/participants`, {
+    const partResp = await request.post(`${API_URL}/api/retreats/${retreat.id}/participants`, {
       headers,
       data: {
         retreat_id: retreat.id,

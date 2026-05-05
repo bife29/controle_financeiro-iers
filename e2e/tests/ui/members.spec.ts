@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { getAuthHeaders } from "../../helpers/auth";
+import { getAuthHeaders, API_URL } from "../../helpers/auth";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -48,7 +48,7 @@ test.describe("Membros - UI", () => {
 
     // Criar membro via API para garantir dados de teste
     const headers = await getAuthHeaders(request);
-    await request.post("/api/members/", {
+    await request.post(`${API_URL}/api/members/`, {
       headers,
       data: { name: uniqueName, cel: celular, cidade: "Niterói" },
     });
@@ -73,7 +73,7 @@ test.describe("Membros - UI", () => {
 
     // Criar membro via API
     const headers = await getAuthHeaders(request);
-    const resp = await request.post("/api/members/", {
+    const resp = await request.post(`${API_URL}/api/members/`, {
       headers,
       data: { name: uniqueName, cel: celular, tel: telefone, email: email, cidade: "São Paulo" },
     });
@@ -101,7 +101,7 @@ test.describe("Membros - UI", () => {
 
     // Criar membro só com tel (sem cel)
     const headers = await getAuthHeaders(request);
-    const resp = await request.post("/api/members/", {
+    const resp = await request.post(`${API_URL}/api/members/`, {
       headers,
       data: { name: uniqueName, tel: telefone, cel: "" },
     });
@@ -121,7 +121,7 @@ test.describe("Membros - UI", () => {
 
     // Criar membro só com tel
     const headers = await getAuthHeaders(request);
-    await request.post("/api/members/", {
+    await request.post(`${API_URL}/api/members/`, {
       headers,
       data: { name: uniqueName, tel: telefone, cel: "" },
     });

@@ -4,6 +4,8 @@ const API_URL = process.env.API_URL || "http://127.0.0.1:8001";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@iers.org";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
+export { API_URL };
+
 export interface AuthToken {
   access_token: string;
   token_type: string;

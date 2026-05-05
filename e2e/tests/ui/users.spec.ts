@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { getAuthHeaders } from "../../helpers/auth";
+import { getAuthHeaders, API_URL } from "../../helpers/auth";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -99,11 +99,11 @@ test.describe("Gestão de Usuários - UI", () => {
 
     // Limpar depois (via API)
     const headers = await getAuthHeaders(request);
-    const usersResp = await request.get("/api/auth/users", { headers });
+    const usersResp = await request.get(`${API_URL}/api/auth/users`, { headers });
     const users = await usersResp.json();
     const created = users.find((u: any) => u.email === uniqueEmail);
     if (created) {
-      await request.delete(`/api/auth/users/${created.id}`, { headers });
+      await request.delete(`${API_URL}/api/auth/users/${created.id}`, { headers });
     }
   });
 });
