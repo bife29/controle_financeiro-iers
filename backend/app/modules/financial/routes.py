@@ -10,7 +10,17 @@ from typing import Optional, List
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from ...core.database import get_db
+from ...core.config import settings
 from ...core.security import get_current_user, require_roles
+
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+
+def _month_expr(col):
+    """Return year-month expression compatible with current DB dialect."""
+    if _is_sqlite:
+        return func.strftime('%Y-%m', col)
+    return func.to_char(col, 'YYYY-MM')
 from .models import Category, Project, Transaction, ParticipantEvent, AuditLog
 from .schemas import (
     CategoryCreate, CategoryResponse,
@@ -640,8 +650,9 @@ async def chart_monthly(
     start = date(today.year, today.month, 1) - timedelta(days=(months - 1) * 30)
     start = date(start.year, start.month, 1)
 
+    month_col = _month_expr(Transaction.date)
     query = select(
-        func.strftime('%Y-%m', Transaction.date).label('month'),
+        month_col.label('month'),
         Transaction.type,
         func.sum(Transaction.value).label('total')
     ).where(Transaction.date >= start)
@@ -650,9 +661,9 @@ async def chart_monthly(
         query = query.where(Transaction.project_id == project_id)
 
     query = query.group_by(
-        func.strftime('%Y-%m', Transaction.date),
+        month_col,
         Transaction.type
-    ).order_by(func.strftime('%Y-%m', Transaction.date))
+    ).order_by(month_col)
 
     rows = (await db.execute(query)).all()
 
@@ -736,8 +747,9 @@ async def chart_by_payment_method(
     current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
 ):
     """Distribuição de valores por forma de pagamento."""
+    method_col = func.coalesce(Transaction.payment_method, 'Não informado')
     query = select(
-        func.coalesce(Transaction.payment_method, 'Não informado').label('method'),
+        method_col.label('method'),
         func.sum(Transaction.value).label('total'),
         func.count(Transaction.id).label('count')
     )
@@ -748,7 +760,7 @@ async def chart_by_payment_method(
     if end_date:
         query = query.where(Transaction.date <= end_date)
 
-    query = query.group_by(func.coalesce(Transaction.payment_method, 'Não informado'))
+    query = query.group_by(Transaction.payment_method)
     rows = (await db.execute(query)).all()
 
     return [{"name": row.method, "value": round(row.total, 2), "count": row.count} for row in rows]
