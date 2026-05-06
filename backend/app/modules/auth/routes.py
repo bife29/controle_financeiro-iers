@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from ...core.database import get_db
 from ...core.security import (
     hash_password, verify_password, create_access_token,
@@ -106,6 +107,7 @@ async def update_user(
         user.is_active = data.is_active
     if data.permissions is not None:
         user.permissions = data.permissions
+        flag_modified(user, "permissions")
 
     await db.flush()
     await db.refresh(user)
