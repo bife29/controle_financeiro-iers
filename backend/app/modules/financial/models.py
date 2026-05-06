@@ -42,8 +42,10 @@ class Transaction(Base):
     payment_method = Column(String(50), nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    status = Column(String(20), default="Previsto")  # Previsto / Conciliado
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    status = Column(String(20), default="Previsto")  # Previsto / Confirmado / Conciliado
+    is_recurring = Column(Boolean, default=False)
+    recurring_group_id = Column(String(50), nullable=True)  # UUID para agrupar recorrentes
     imported_from = Column(String(50), nullable=True)  # ofx / csv / manual
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

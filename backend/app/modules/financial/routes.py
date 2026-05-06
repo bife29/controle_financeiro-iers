@@ -1,11 +1,14 @@
 import json
 import io
 import tempfile
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete as sa_delete
 from typing import Optional, List
 from datetime import date, datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from ...core.database import get_db
 from ...core.security import get_current_user, require_roles
 from .models import Category, Project, Transaction, ParticipantEvent, AuditLog
@@ -14,7 +17,8 @@ from .schemas import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectDashboard,
     TransactionCreate, TransactionUpdate, TransactionResponse,
     ParticipantEventCreate, ParticipantEventUpdate, ParticipantEventResponse,
-    AuditLogResponse, FinancialSummary
+    AuditLogResponse, FinancialSummary,
+    BatchDeleteRequest, RecurringTransactionCreate
 )
 
 router = APIRouter(prefix="/api/financial", tags=["Financeiro"])
@@ -229,6 +233,7 @@ async def project_dashboard(
 async def list_transactions(
     project_id: Optional[int] = Query(None),
     type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -241,6 +246,8 @@ async def list_transactions(
         query = query.where(Transaction.project_id == project_id)
     if type:
         query = query.where(Transaction.type == type)
+    if status:
+        query = query.where(Transaction.status == status)
     if start_date:
         query = query.where(Transaction.date >= start_date)
     if end_date:
@@ -319,6 +326,205 @@ async def delete_transaction(
     db.add(log)
     await db.delete(transaction)
     return {"detail": "Transação excluída"}
+
+
+@router.delete("/transactions/batch")
+async def batch_delete_transactions(
+    data: BatchDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    """Exclui múltiplas transações de uma vez."""
+    if not data.ids:
+        raise HTTPException(status_code=400, detail="Nenhum ID fornecido")
+    if len(data.ids) > 1000:
+        raise HTTPException(status_code=400, detail="Máximo de 1000 transações por vez")
+
+    # Verificar se existem
+    result = await db.execute(
+        select(Transaction).where(Transaction.id.in_(data.ids))
+    )
+    transactions = result.scalars().all()
+    found_ids = [t.id for t in transactions]
+
+    if not found_ids:
+        raise HTTPException(status_code=404, detail="Nenhuma transação encontrada")
+
+    # Desreferenciar pagamentos de retiro que apontem para essas transações
+    from ..retreat.models import RetreatPayment
+    from sqlalchemy import update as sa_update
+    await db.execute(
+        sa_update(RetreatPayment)
+        .where(RetreatPayment.transaction_id.in_(found_ids))
+        .values(transaction_id=None)
+    )
+
+    # Deletar transações
+    await db.execute(sa_delete(Transaction).where(Transaction.id.in_(found_ids)))
+
+    # Audit log
+    log = AuditLog(
+        action="batch_delete", entity="Transaction", entity_id=0,
+        user_id=current_user.id,
+        after_data=json.dumps({"deleted_ids": found_ids, "count": len(found_ids)})
+    )
+    db.add(log)
+    await db.flush()
+
+    return {"detail": f"{len(found_ids)} transações excluídas", "count": len(found_ids)}
+
+
+@router.post("/transactions/recurring", response_model=list[TransactionResponse])
+async def create_recurring_transactions(
+    data: RecurringTransactionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    """
+    Cria transações recorrentes (previstos).
+    Gera N instâncias com status 'Previsto', uma por mês.
+    """
+    if data.recurrence_count < 1 or data.recurrence_count > 60:
+        raise HTTPException(status_code=400, detail="Recorrência deve ser entre 1 e 60 meses")
+
+    group_id = str(uuid.uuid4())
+    day = data.recurrence_day or data.date.day
+    created = []
+
+    for i in range(data.recurrence_count):
+        tx_date = data.date + relativedelta(months=i)
+        # Ajustar dia do mês (se dia > último dia do mês, usa último dia)
+        try:
+            tx_date = tx_date.replace(day=day)
+        except ValueError:
+            # Mês não tem esse dia (ex: 31 em fevereiro) → último dia
+            next_month = tx_date.replace(day=1) + relativedelta(months=1)
+            tx_date = next_month - timedelta(days=1)
+
+        tx = Transaction(
+            date=tx_date,
+            type=data.type,
+            value=data.value,
+            description=data.description,
+            payment_method=data.payment_method,
+            category_id=data.category_id,
+            member_id=data.member_id,
+            project_id=data.project_id,
+            status="Previsto",
+            imported_from="recorrente",
+            is_recurring=True,
+            recurring_group_id=group_id,
+            created_by=current_user.id,
+        )
+        db.add(tx)
+        created.append(tx)
+
+    await db.flush()
+    for tx in created:
+        await db.refresh(tx)
+
+    # Audit log
+    log = AuditLog(
+        action="create_recurring", entity="Transaction", entity_id=created[0].id,
+        user_id=current_user.id,
+        after_data=json.dumps({
+            "group_id": group_id,
+            "count": len(created),
+            "value": data.value,
+            "description": data.description,
+        })
+    )
+    db.add(log)
+
+    return created
+
+
+# ============ EXPORT / BACKUP ============
+
+@router.get("/export")
+async def export_financial_data(
+    format: str = Query("json", regex="^(json|csv)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    """
+    Exporta todos os dados financeiros para backup.
+    Formatos: json ou csv.
+    """
+    # Buscar todos os dados
+    transactions = (await db.execute(
+        select(Transaction).order_by(Transaction.date.desc())
+    )).scalars().all()
+    categories = (await db.execute(select(Category))).scalars().all()
+    projects = (await db.execute(select(Project))).scalars().all()
+    participants = (await db.execute(select(ParticipantEvent))).scalars().all()
+
+    if format == "json":
+        export_data = {
+            "exported_at": datetime.now().isoformat(),
+            "exported_by": current_user.email,
+            "summary": {
+                "total_transactions": len(transactions),
+                "total_categories": len(categories),
+                "total_projects": len(projects),
+                "total_participants": len(participants),
+            },
+            "categories": [
+                {"id": c.id, "name": c.name, "type": c.type, "nature": c.nature, "is_active": c.is_active}
+                for c in categories
+            ],
+            "projects": [
+                {"id": p.id, "name": p.name, "description": p.description,
+                 "start_date": str(p.start_date), "end_date": str(p.end_date) if p.end_date else None,
+                 "financial_goal": p.financial_goal, "status": p.status}
+                for p in projects
+            ],
+            "transactions": [
+                {"id": t.id, "date": str(t.date), "type": t.type, "value": t.value,
+                 "description": t.description, "payment_method": t.payment_method,
+                 "category_id": t.category_id, "member_id": t.member_id,
+                 "project_id": t.project_id, "status": t.status,
+                 "imported_from": t.imported_from, "is_recurring": t.is_recurring,
+                 "recurring_group_id": t.recurring_group_id}
+                for t in transactions
+            ],
+            "participant_events": [
+                {"id": pe.id, "member_id": pe.member_id, "project_id": pe.project_id,
+                 "agreed_value": pe.agreed_value, "paid_value": pe.paid_value, "status": pe.status}
+                for pe in participants
+            ],
+        }
+        content = json.dumps(export_data, ensure_ascii=False, indent=2)
+        filename = f"backup_financeiro_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8")),
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    else:  # CSV
+        import csv
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "ID", "Data", "Tipo", "Valor", "Descrição", "Forma Pagamento",
+            "Categoria ID", "Membro ID", "Projeto ID", "Status", "Importado de",
+            "Recorrente", "Grupo Recorrência"
+        ])
+        for t in transactions:
+            writer.writerow([
+                t.id, str(t.date), t.type, t.value, t.description or "",
+                t.payment_method or "", t.category_id or "", t.member_id or "",
+                t.project_id or "", t.status, t.imported_from or "",
+                t.is_recurring, t.recurring_group_id or ""
+            ])
+        content = output.getvalue()
+        filename = f"backup_transacoes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8-sig")),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
 
 
 # ============ PARTICIPANT EVENTS ============
@@ -729,13 +935,14 @@ async def list_audit_logs(
 @router.post("/import")
 async def import_transactions(
     file: UploadFile = File(...),
-    project_id: int = Form(...),
+    project_id: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("super_admin", "financeiro"))
 ):
     """
     Importa transações de arquivo OFX ou CSV.
     Retorna preview das transações e possíveis duplicidades.
+    Projeto é opcional — pode classificar depois.
     """
     content = await file.read()
     filename = (file.filename or "").lower()
@@ -743,10 +950,11 @@ async def import_transactions(
     if not filename.endswith((".ofx", ".csv")):
         raise HTTPException(status_code=400, detail="Formato não suportado. Use .ofx ou .csv")
 
-    # Verificar projeto existe
-    project = await db.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    # Verificar projeto se informado
+    if project_id:
+        project = await db.get(Project, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     preview = []
     duplicates = []
@@ -798,10 +1006,15 @@ async def import_transactions(
                 "imported_from": "csv",
             })
 
-    # Verificar duplicidades (transações existentes do mesmo projeto com valores/datas similares)
-    existing_result = await db.execute(
-        select(Transaction).where(Transaction.project_id == project_id)
-    )
+    # Verificar duplicidades (transações existentes com valores/datas similares)
+    if project_id:
+        existing_result = await db.execute(
+            select(Transaction).where(Transaction.project_id == project_id)
+        )
+    else:
+        existing_result = await db.execute(
+            select(Transaction).order_by(Transaction.date.desc()).limit(500)
+        )
     existing = existing_result.scalars().all()
 
     confirmed = []
@@ -849,12 +1062,13 @@ async def confirm_import(
 ):
     """
     Confirma e salva as transações importadas no banco de dados.
-    Body: { "transactions": [...], "project_id": int }
+    Body: { "transactions": [...], "project_id": int | null }
+    Projeto é opcional — pode classificar depois.
     """
     transactions = payload.get("transactions", [])
     project_id = payload.get("project_id")
-    if not transactions or not project_id:
-        raise HTTPException(status_code=400, detail="transactions e project_id são obrigatórios")
+    if not transactions:
+        raise HTTPException(status_code=400, detail="transactions é obrigatório")
     created = []
     for tx_data in transactions:
         tx = Transaction(
@@ -864,7 +1078,7 @@ async def confirm_import(
             description=tx_data.get("description"),
             payment_method=tx_data.get("payment_method", "Transferência Bancária"),
             category_id=tx_data.get("category_id"),
-            project_id=project_id,
+            project_id=tx_data.get("project_id") or project_id,
             status=tx_data.get("status", "Previsto"),
             imported_from=tx_data.get("imported_from", "manual"),
             created_by=current_user.id,

@@ -48,12 +48,45 @@ def create_app() -> FastAPI:
     async def startup():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Migrate: add new columns if they don't exist (safe for PostgreSQL and SQLite)
+            await _apply_migrations(conn)
 
     @app.get("/health")
     def health_check():
         return {"status": "ok", "version": settings.APP_VERSION}
 
     return app
+
+
+async def _apply_migrations(conn):
+    """Add missing columns to existing tables (safe to run multiple times)."""
+    from sqlalchemy import text, inspect
+
+    def _get_columns(connection, table_name):
+        inspector = inspect(connection)
+        try:
+            return [c["name"] for c in inspector.get_columns(table_name)]
+        except Exception:
+            return []
+
+    columns = await conn.run_sync(lambda c: _get_columns(c, "transactions"))
+    if columns:  # table exists
+        if "is_recurring" not in columns:
+            await conn.execute(text(
+                "ALTER TABLE transactions ADD COLUMN is_recurring BOOLEAN DEFAULT FALSE"
+            ))
+        if "recurring_group_id" not in columns:
+            await conn.execute(text(
+                "ALTER TABLE transactions ADD COLUMN recurring_group_id VARCHAR(50)"
+            ))
+        # Make project_id nullable (PostgreSQL syntax differs from SQLite)
+        # SQLite doesn't support ALTER COLUMN, but new tables will use the new schema
+        try:
+            await conn.execute(text(
+                "ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL"
+            ))
+        except Exception:
+            pass  # SQLite or already nullable
 
 
 app = create_app()

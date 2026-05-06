@@ -121,8 +121,8 @@ export function ImportPage() {
   }
 
   const handleUpload = async () => {
-    if (!selectedFile || !projectId) {
-      setError('Selecione um arquivo e um projeto')
+    if (!selectedFile) {
+      setError('Selecione um arquivo')
       return
     }
 
@@ -134,7 +134,9 @@ export function ImportPage() {
     try {
       const formData = new FormData()
       formData.append('file', selectedFile)
-      formData.append('project_id', projectId)
+      if (projectId) {
+        formData.append('project_id', projectId)
+      }
 
       const response = await api.post('/api/financial/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -199,7 +201,7 @@ export function ImportPage() {
     try {
       await api.post('/api/financial/import/confirm', {
         transactions: toImport,
-        project_id: Number(projectId),
+        project_id: projectId ? Number(projectId) : null,
       })
 
       setSuccess(`${toImport.length} transações importadas com sucesso!`)
@@ -261,17 +263,20 @@ export function ImportPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Projeto de destino *</label>
+            <label className="block text-sm font-medium mb-1">Projeto de destino (opcional)</label>
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
             >
-              <option value="">Selecione...</option>
+              <option value="">Nenhum (classificar depois)</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Pode importar sem projeto e classificar individualmente depois
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Arquivo (.ofx ou .csv) *</label>
@@ -295,7 +300,7 @@ export function ImportPage() {
 
         <button
           onClick={handleUpload}
-          disabled={!selectedFile || !projectId || uploading}
+          disabled={!selectedFile || uploading}
           className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50"
         >
           {uploading ? (

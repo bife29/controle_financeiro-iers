@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
+import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download } from 'lucide-react'
 
 interface Transaction {
   id: number
@@ -29,7 +29,10 @@ export function TransactionsList() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterProject, setFilterProject] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<Transaction | null>(null)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false)
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -56,12 +59,50 @@ export function TransactionsList() {
     },
   })
 
+  const batchDelete = useMutation({
+    mutationFn: (ids: number[]) => api.delete('/api/financial/transactions/batch', { data: { ids } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      setSelected(new Set())
+      setBatchDeleteConfirm(false)
+    },
+  })
+
   const filtered = transactions.filter(
     (t) =>
-      !search ||
-      (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
-      t.value.toString().includes(search)
+      (!search ||
+        (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
+        t.value.toString().includes(search)) &&
+      (!filterStatus || t.status === filterStatus)
   )
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map((t) => t.id)))
+    }
+  }
+
+  const handleExport = async (format: 'json' | 'csv') => {
+    const response = await api.get(`/api/financial/export?format=${format}`, { responseType: 'blob' })
+    const blob = new Blob([response.data])
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `backup_financeiro.${format}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const fmt = (v: number) =>
     v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -85,15 +126,39 @@ export function TransactionsList() {
             <h1 className="text-2xl font-bold">Transações</h1>
             <p className="text-sm text-muted-foreground">
               {filtered.length} lançamento{filtered.length !== 1 ? 's' : ''}
+              {selected.size > 0 && ` • ${selected.size} selecionado${selected.size !== 1 ? 's' : ''}`}
             </p>
           </div>
         </div>
-        <Link
-          to="/financeiro/transacoes/nova"
-          className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:opacity-90 transition"
-        >
-          <Plus className="w-4 h-4" /> Nova Transação
-        </Link>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <button
+              onClick={() => setBatchDeleteConfirm(true)}
+              className="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+            >
+              <Trash2 className="w-4 h-4" /> Excluir ({selected.size})
+            </button>
+          )}
+          <div className="relative group">
+            <button className="inline-flex items-center gap-2 border px-4 py-2 rounded-lg hover:bg-muted transition">
+              <Download className="w-4 h-4" /> Backup
+            </button>
+            <div className="absolute right-0 top-full mt-1 bg-card border rounded-lg shadow-lg hidden group-hover:block z-10">
+              <button onClick={() => handleExport('json')} className="block w-full text-left px-4 py-2 hover:bg-muted text-sm">
+                Exportar JSON
+              </button>
+              <button onClick={() => handleExport('csv')} className="block w-full text-left px-4 py-2 hover:bg-muted text-sm">
+                Exportar CSV
+              </button>
+            </div>
+          </div>
+          <Link
+            to="/financeiro/transacoes/nova"
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:opacity-90 transition"
+          >
+            <Plus className="w-4 h-4" /> Nova Transação
+          </Link>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -127,6 +192,16 @@ export function TransactionsList() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+        >
+          <option value="">Todos os status</option>
+          <option value="Previsto">Previsto</option>
+          <option value="Confirmado">Confirmado</option>
+          <option value="Conciliado">Conciliado</option>
+        </select>
       </div>
 
       {/* Tabela */}
@@ -142,6 +217,15 @@ export function TransactionsList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
+                  <th className="px-3 py-3 w-10">
+                    <button onClick={toggleAll} className="text-muted-foreground hover:text-foreground">
+                      {selected.size === filtered.length && filtered.length > 0 ? (
+                        <CheckSquare className="w-4 h-4" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  </th>
                   <th className="text-left px-4 py-3 font-medium">Data</th>
                   <th className="text-left px-4 py-3 font-medium">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium">Descrição</th>
@@ -153,7 +237,16 @@ export function TransactionsList() {
               </thead>
               <tbody>
                 {filtered.map((t) => (
-                  <tr key={t.id} className="border-b last:border-0 hover:bg-muted/30">
+                  <tr key={t.id} className={`border-b last:border-0 hover:bg-muted/30 ${selected.has(t.id) ? 'bg-primary/5' : ''}`}>
+                    <td className="px-3 py-3">
+                      <button onClick={() => toggleSelect(t.id)} className="text-muted-foreground hover:text-foreground">
+                        {selected.has(t.id) ? (
+                          <CheckSquare className="w-4 h-4 text-primary" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </td>
                     <td className="px-4 py-3">{fmtDate(t.date)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
@@ -240,6 +333,34 @@ export function TransactionsList() {
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
               >
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de exclusão em massa */}
+      {batchDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full">
+            <h3 className="font-semibold text-lg text-red-600">Exclusão em Massa</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              Tem certeza que deseja excluir <strong>{selected.size}</strong> transação{selected.size !== 1 ? 'ões' : ''}?
+              Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setBatchDeleteConfirm(false)}
+                className="px-4 py-2 border rounded-lg hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => batchDelete.mutate([...selected])}
+                disabled={batchDelete.isPending}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {batchDelete.isPending ? 'Excluindo...' : `Excluir ${selected.size}`}
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Repeat } from 'lucide-react'
 
 interface Category {
   id: number
@@ -16,6 +16,11 @@ interface Project {
   name: string
 }
 
+interface MemberSummary {
+  id: number
+  name: string
+}
+
 interface TransactionData {
   id?: number
   date: string
@@ -24,6 +29,7 @@ interface TransactionData {
   description: string
   payment_method: string
   category_id: number | null
+  member_id: number | null
   project_id: number | null
   status: string
 }
@@ -40,10 +46,14 @@ export function TransactionForm() {
     description: '',
     payment_method: 'Dinheiro',
     category_id: '',
+    member_id: '',
     project_id: '',
     status: 'Previsto',
   })
   const [error, setError] = useState('')
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurrenceCount, setRecurrenceCount] = useState('12')
+  const [recurrenceDay, setRecurrenceDay] = useState('')
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -53,6 +63,11 @@ export function TransactionForm() {
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: () => api.get('/api/financial/projects').then((r) => r.data),
+  })
+
+  const { data: members = [] } = useQuery<MemberSummary[]>({
+    queryKey: ['members-summary'],
+    queryFn: () => api.get('/api/members/summary').then((r) => r.data),
   })
 
   // Carregar dados para edição
@@ -68,6 +83,7 @@ export function TransactionForm() {
             description: tx.description || '',
             payment_method: tx.payment_method || 'Dinheiro',
             category_id: tx.category_id ? String(tx.category_id) : '',
+            member_id: tx.member_id ? String(tx.member_id) : '',
             project_id: tx.project_id ? String(tx.project_id) : '',
             status: tx.status,
           })
@@ -82,6 +98,8 @@ export function TransactionForm() {
     mutationFn: (data: Record<string, unknown>) =>
       isEditing
         ? api.put(`/api/financial/transactions/${id}`, data)
+        : isRecurring
+        ? api.post('/api/financial/transactions/recurring', data)
         : api.post('/api/financial/transactions', data),
     onSuccess: () => navigate('/financeiro/transacoes'),
     onError: (err: any) => {
@@ -92,24 +110,29 @@ export function TransactionForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!form.project_id) {
-      setError('Selecione um projeto')
-      return
-    }
     if (!form.value || Number(form.value) <= 0) {
       setError('Informe um valor válido')
       return
     }
-    save.mutate({
+
+    const baseData: Record<string, unknown> = {
       date: form.date,
       type: form.type,
       value: Number(form.value),
       description: form.description || null,
       payment_method: form.payment_method || null,
       category_id: form.category_id ? Number(form.category_id) : null,
-      project_id: Number(form.project_id),
+      member_id: form.member_id ? Number(form.member_id) : null,
+      project_id: form.project_id ? Number(form.project_id) : null,
       status: form.status,
-    })
+    }
+
+    if (isRecurring && !isEditing) {
+      baseData.recurrence_count = Number(recurrenceCount)
+      if (recurrenceDay) baseData.recurrence_day = Number(recurrenceDay)
+    }
+
+    save.mutate(baseData)
   }
 
   return (
@@ -197,14 +220,13 @@ export function TransactionForm() {
         {/* Projeto e Categoria */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Projeto *</label>
+            <label className="block text-sm font-medium mb-1">Projeto</label>
             <select
               value={form.project_id}
               onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-              required
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
             >
-              <option value="">Selecione...</option>
+              <option value="">Nenhum (classificar depois)</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -223,6 +245,24 @@ export function TransactionForm() {
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Membro */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Membro (opcional)</label>
+          <select
+            value={form.member_id}
+            onChange={(e) => setForm({ ...form, member_id: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+          >
+            <option value="">Nenhum</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground mt-1">
+            Associar a um membro para rastrear quem pagou/recebeu
+          </p>
         </div>
 
         {/* Forma de pagamento e Status */}
@@ -256,6 +296,52 @@ export function TransactionForm() {
             </select>
           </div>
         </div>
+
+        {/* Recorrência (apenas ao criar) */}
+        {!isEditing && (
+          <div className="border rounded-lg p-4 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <Repeat className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Transação recorrente</span>
+            </label>
+            {isRecurring && (
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Repetir por (meses)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={recurrenceCount}
+                    onChange={(e) => setRecurrenceCount(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Dia do vencimento</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="Mesmo da data"
+                    value={recurrenceDay}
+                    onChange={(e) => setRecurrenceDay(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none text-sm"
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Serão criados {recurrenceCount} lançamentos com status "Previsto", um por mês a partir da data informada.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Botões */}
         <div className="flex justify-end gap-3 pt-4">

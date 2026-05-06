@@ -24,7 +24,7 @@ DEFAULT_PERMISSIONS: dict[str, dict[str, list[str]]] = {
     "financeiro": {
         "dashboard": ["view"],
         "financeiro": ["view", "create", "edit", "delete"],
-        "membros": ["view"],
+        "membros": ["view", "create"],
         "retiros": ["view"],
         "feedback": ["view", "create"],
         "usuarios": [],

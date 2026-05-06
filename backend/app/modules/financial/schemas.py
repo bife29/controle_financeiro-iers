@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import date, datetime
 
 
@@ -72,7 +72,7 @@ class TransactionCreate(BaseModel):
     payment_method: Optional[str] = None
     category_id: Optional[int] = None
     member_id: Optional[int] = None
-    project_id: int
+    project_id: Optional[int] = None
     status: str = "Previsto"
 
 
@@ -97,13 +97,34 @@ class TransactionResponse(BaseModel):
     payment_method: Optional[str] = None
     category_id: Optional[int] = None
     member_id: Optional[int] = None
-    project_id: int
+    project_id: Optional[int] = None
     status: str
     imported_from: Optional[str] = None
+    is_recurring: bool = False
+    recurring_group_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+# --- Batch Operations ---
+class BatchDeleteRequest(BaseModel):
+    ids: List[int]
+
+
+# --- Recurring Transactions ---
+class RecurringTransactionCreate(BaseModel):
+    date: date
+    type: str
+    value: float
+    description: Optional[str] = None
+    payment_method: Optional[str] = None
+    category_id: Optional[int] = None
+    member_id: Optional[int] = None
+    project_id: Optional[int] = None
+    recurrence_count: int  # Quantas vezes repetir
+    recurrence_day: Optional[int] = None  # Dia do mês (se None, usa o dia da date)
 
 
 # --- ParticipantEvent ---
