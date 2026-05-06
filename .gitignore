@@ -44,6 +44,7 @@ Desktop.ini
 
 # Screenshots
 *.png
+!frontend/public/logo.png
 
 # Legacy files
 FINANCEIROAT*

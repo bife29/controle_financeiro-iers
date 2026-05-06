@@ -32,7 +32,7 @@ async function globalTeardown() {
   const headers = { Authorization: `Bearer ${access_token}` };
 
   // Padrão para identificar dados de teste
-  const TEST_PATTERN = /e2e|teste|test|ui.?test|playwright|p[1-6]\s*-|para remover|retirante|convidado|visitante|criança|duplicado|busca.?teste|contato|fallback|detalhe/i;
+  const TEST_PATTERN = /e2e|teste|test|\bui\b|playwright|p[1-6]\s*-|para remover|retirante|convidado|visitante|criança|duplicado|busca.?teste|contato|fallback|detalhe|carn[êe]\s*ui|dashboard\s*ui|modal\s*ui|inscri/i;
 
   // 1. Limpar retiros de teste PRIMEIRO (cascateia participantes e pagamentos via API)
   try {
