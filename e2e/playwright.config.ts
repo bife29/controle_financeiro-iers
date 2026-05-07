@@ -2,10 +2,14 @@ import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "path";
 
-dotenv.config({ path: path.resolve(__dirname, ".env") });
+// Permite escolher qual .env carregar via E2E_ENV (ex.: production)
+const envFile =
+  process.env.E2E_ENV === "production" ? ".env.production" : ".env";
+dotenv.config({ path: path.resolve(__dirname, envFile) });
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5173";
 const API_URL = process.env.API_URL || "http://127.0.0.1:8001";
+const IS_PROD = process.env.E2E_ENV === "production";
 
 export default defineConfig({
   testDir: "./tests",
@@ -15,7 +19,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: [["html", { open: "never" }], ["list"]],
-  timeout: 30_000,
+  // Produção (Render free tier) pode ter cold start lento
+  timeout: IS_PROD ? 90_000 : 30_000,
 
   use: {
     baseURL: BASE_URL,
@@ -25,6 +30,14 @@ export default defineConfig({
   },
 
   projects: [
+    // Smoke seguro para PRODUÇÃO (somente leitura)
+    {
+      name: "smoke",
+      testDir: "./tests/smoke",
+      use: {
+        baseURL: API_URL,
+      },
+    },
     // Testes de API (sem browser)
     {
       name: "api",
