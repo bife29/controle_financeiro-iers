@@ -3,11 +3,11 @@ import { useAuthStore } from '@/stores/auth'
 import {
   BookOpen, LayoutDashboard, DollarSign, Users, Mountain,
   MessageSquare, ShieldCheck, ChevronDown, ChevronRight,
-  ArrowRight, LogIn, HelpCircle
+  ArrowRight, LogIn, HelpCircle, Calendar, Package
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Section = 'inicio' | 'dashboard' | 'financeiro' | 'membros' | 'retiros' | 'feedback' | 'usuarios' | 'perfis' | 'faq'
+type Section = 'inicio' | 'dashboard' | 'financeiro' | 'membros' | 'retiros' | 'secretaria' | 'patrimonio' | 'feedback' | 'usuarios' | 'perfis' | 'faq'
 
 const sections = [
   { id: 'inicio' as Section, name: 'Início', icon: BookOpen },
@@ -15,6 +15,8 @@ const sections = [
   { id: 'financeiro' as Section, name: 'Financeiro', icon: DollarSign },
   { id: 'membros' as Section, name: 'Membros', icon: Users },
   { id: 'retiros' as Section, name: 'Retiros', icon: Mountain },
+  { id: 'secretaria' as Section, name: 'Secretaria', icon: Calendar },
+  { id: 'patrimonio' as Section, name: 'Patrimônio', icon: Package },
   { id: 'feedback' as Section, name: 'Feedback', icon: MessageSquare },
   { id: 'usuarios' as Section, name: 'Usuários', icon: ShieldCheck },
   { id: 'perfis' as Section, name: 'Meu Perfil', icon: LogIn },
@@ -356,6 +358,133 @@ function SectionRetiros() {
   )
 }
 
+function SectionSecretaria() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">📅 Módulo de Secretaria</h2>
+        <p className="text-muted-foreground mt-1">Calendário de eventos, modelos de mensagem, grupos de WhatsApp e configurações.</p>
+      </div>
+
+      <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-5">
+        <h3 className="font-semibold text-cyan-900 mb-2">O que você pode fazer aqui:</h3>
+        <ul className="space-y-1 text-sm text-cyan-800">
+          <li>• Visualizar <strong>aniversariantes do mês</strong> e eventos no calendário</li>
+          <li>• Cadastrar <strong>eventos</strong> da igreja (cultos, ensaios, encontros)</li>
+          <li>• Manter <strong>modelos de mensagem</strong> reutilizáveis para WhatsApp</li>
+          <li>• Cadastrar <strong>grupos de WhatsApp</strong> dos departamentos / ministérios</li>
+          <li>• Compartilhar avisos com alguns cliques (link wa.me)</li>
+        </ul>
+      </div>
+
+      <Accordion title="📆 Calendário: aniversariantes e eventos" defaultOpen>
+        <FlowStep steps={['Secretaria', 'Calendário', 'Navegar pelos meses', 'Clicar em um dia']} color="blue" />
+        <p className="text-sm mt-2">Cada dia mostra:</p>
+        <ul className="text-xs text-gray-600 list-disc ml-5 mt-1">
+          <li>🎂 Aniversariantes (membros) com indicação por faixa etária</li>
+          <li>📅 Eventos cadastrados naquela data</li>
+        </ul>
+        <div className="bg-blue-50 border border-blue-200 rounded p-2 mt-2 text-xs text-blue-800">
+          <p>Clique em um dia para abrir os detalhes (lista de aniversariantes com idade e telefone) e enviar a mensagem de parabéns rapidamente.</p>
+        </div>
+      </Accordion>
+
+      <Accordion title="📅 Como cadastrar um evento">
+        <FlowStep steps={['Secretaria', 'Eventos', 'Novo evento', 'Preencher dados', 'Salvar']} color="green" />
+        <p className="text-sm mt-2">Campos: <strong>título, data, tipo, local, descrição</strong>.</p>
+        <p className="text-sm mt-2">Eventos aparecem no calendário e podem ser compartilhados via WhatsApp pelo botão 💬 da listagem.</p>
+      </Accordion>
+
+      <Accordion title="💬 Modelos de mensagem para WhatsApp">
+        <FlowStep steps={['Secretaria', 'Modelos', 'Novo modelo', 'Escolher tipo', 'Escrever texto', 'Salvar']} color="purple" />
+        <p className="text-sm mt-2">Tipos disponíveis: <strong>aniversariante, evento, aviso geral, convite</strong> etc.</p>
+        <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2 text-xs text-amber-800">
+          <p>✨ Marque um modelo como <strong>padrão</strong> (⭐) para que ele venha pré-selecionado quando você for compartilhar uma mensagem do tipo correspondente.</p>
+        </div>
+        <p className="text-xs text-gray-600 mt-2">Variáveis suportadas no texto: <code>{'{nome}'}</code>, <code>{'{idade}'}</code>, <code>{'{evento}'}</code>, <code>{'{data}'}</code>, <code>{'{local}'}</code>.</p>
+      </Accordion>
+
+      <Accordion title="👥 Grupos de WhatsApp">
+        <FlowStep steps={['Secretaria', 'Grupos WhatsApp', 'Novo grupo', 'Nome + link convite', 'Salvar']} color="green" />
+        <p className="text-sm mt-2">Cadastre os grupos da igreja (ex.: <em>Diretoria, Louvor, Jovens, Mães</em>) com o link de convite. Eles ficam disponíveis na hora de compartilhar avisos.</p>
+      </Accordion>
+
+      <Accordion title="⚙️ Configurações">
+        <FlowStep steps={['Secretaria', 'Configurações', 'Editar dados', 'Salvar']} color="amber" />
+        <ul className="text-xs text-gray-600 list-disc ml-5 mt-1">
+          <li>Telefone da secretaria (assinatura nas mensagens)</li>
+          <li>Nome da igreja</li>
+          <li>Antecedência (dias) dos lembretes de eventos</li>
+        </ul>
+      </Accordion>
+    </div>
+  )
+}
+
+function SectionPatrimonio() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">📦 Módulo de Patrimônio</h2>
+        <p className="text-muted-foreground mt-1">Controle dos bens da igreja: cadastro, manutenção, baixa e relatórios.</p>
+      </div>
+
+      <div className="bg-stone-50 border border-stone-200 rounded-xl p-5">
+        <h3 className="font-semibold text-stone-900 mb-2">O que você pode fazer:</h3>
+        <ul className="space-y-1 text-sm text-stone-800">
+          <li>• Cadastrar bens (móveis, equipamentos de som, instrumentos, eletrônicos)</li>
+          <li>• Anexar foto e nota fiscal de cada bem</li>
+          <li>• Registrar manutenções (envio e retorno) com prestador, custo e garantia</li>
+          <li>• Dar <strong>baixa</strong> de um item (perda, doação, descarte)</li>
+          <li>• Visualizar dashboard com totais por categoria, local e situação</li>
+        </ul>
+      </div>
+
+      <Accordion title="📝 Como cadastrar um bem" defaultOpen>
+        <FlowStep steps={['Patrimônio', 'Bens', 'Novo bem', 'Preencher dados', 'Salvar']} color="green" />
+        <p className="text-sm mt-2">Campos principais: <strong>nome, categoria, local, valor de aquisição, data, número de série, observações</strong>.</p>
+        <div className="bg-blue-50 border border-blue-200 rounded p-2 mt-2 text-xs text-blue-800">
+          <p>Você pode anexar <strong>foto</strong> e <strong>nota fiscal</strong> (PDF/imagem). Cada bem recebe um código único.</p>
+        </div>
+      </Accordion>
+
+      <Accordion title="🔧 Como registrar manutenção">
+        <FlowStep steps={['Patrimônio', 'Bem', 'Detalhe', 'Nova manutenção', 'Preencher e salvar']} color="amber" />
+        <p className="text-sm mt-2">Ao enviar para manutenção informe: <strong>prestador, motivo, data de envio</strong>. O status do bem muda para <em>"Em manutenção"</em>.</p>
+        <p className="text-sm mt-2">Quando voltar, registre o <strong>retorno</strong>: data, custo do serviço, garantia e novo status (Em uso ou Reserva).</p>
+        <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2 text-xs text-amber-800">
+          <p>💰 O custo da manutenção pode opcionalmente gerar uma <strong>transação de Saída</strong> no Financeiro (configurável ao registrar).</p>
+        </div>
+      </Accordion>
+
+      <Accordion title="📂 Categorias e locais">
+        <FlowStep steps={['Patrimônio', 'Configurações', 'Categorias / Locais', 'Adicionar']} color="blue" />
+        <p className="text-sm mt-2">Antes de cadastrar bens, defina:</p>
+        <ul className="text-xs text-gray-600 list-disc ml-5 mt-1">
+          <li><strong>Categorias</strong>: Som, Instrumentos, Móveis, Eletrônicos, Outros</li>
+          <li><strong>Locais</strong>: Templo, Salão, Secretaria, EBD, Cozinha</li>
+        </ul>
+      </Accordion>
+
+      <Accordion title="🗑️ Dar baixa em um bem">
+        <FlowStep steps={['Bem', 'Detalhe', 'Dar baixa', 'Motivo + observação', 'Confirmar']} color="purple" />
+        <p className="text-sm mt-2">Use a baixa quando o bem foi <strong>perdido, doado, vendido ou descartado</strong>. O histórico permanece consultável; o item só some dos relatórios de "Em uso".</p>
+        <p className="text-sm mt-2">Para reverter, abra o bem e clique em <strong>Reativar</strong>.</p>
+      </Accordion>
+
+      <Accordion title="📊 Dashboard">
+        <p className="text-sm">Mostra totais de bens por:</p>
+        <ul className="text-xs text-gray-600 list-disc ml-5 mt-1">
+          <li>Categoria (gráfico)</li>
+          <li>Local (lista)</li>
+          <li>Status (Em uso / Em manutenção / Reserva / Baixado)</li>
+          <li>Valor total do patrimônio (somatório das aquisições)</li>
+        </ul>
+      </Accordion>
+    </div>
+  )
+}
+
 function SectionFeedback() {
   return (
     <div className="space-y-6">
@@ -562,6 +691,8 @@ export function ManualPage() {
       case 'financeiro': return <SectionFinanceiro />
       case 'membros': return <SectionMembros />
       case 'retiros': return <SectionRetiros />
+      case 'secretaria': return <SectionSecretaria />
+      case 'patrimonio': return <SectionPatrimonio />
       case 'feedback': return <SectionFeedback />
       case 'usuarios': return <SectionUsuarios />
       case 'perfis': return <SectionPerfis />
