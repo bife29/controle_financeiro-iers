@@ -69,11 +69,13 @@ test.describe("Smoke produção — leitura dos módulos", () => {
     const r = await request.get(`${API_URL}/api/financial/dashboard`, { headers });
     expect(r.ok()).toBeTruthy();
     const body = await r.json();
-    // Novos campos adicionados no refactor
-    expect(body).toHaveProperty("total_in");
-    expect(body).toHaveProperty("total_out");
+    // Campos do refactor financeiro
+    expect(body).toHaveProperty("total_income");
+    expect(body).toHaveProperty("total_expense");
     expect(body).toHaveProperty("forecast_in");
     expect(body).toHaveProperty("forecast_out");
+    expect(body).toHaveProperty("forecast_in_count");
+    expect(body).toHaveProperty("forecast_out_count");
   });
 
   test("GET /api/financial/categories responde lista", async ({ request }) => {
@@ -112,9 +114,9 @@ test.describe("Smoke produção — leitura dos módulos", () => {
     expect(r.ok()).toBeTruthy();
   });
 
-  test("GET /api/patrimony/assets responde lista", async ({ request }) => {
-    const r = await request.get(`${API_URL}/api/patrimony/assets`, { headers });
-    // Pode ser 200 (lista) ou 404 se módulo ainda não foi liberado em prod
+  test("GET /api/patrimony responde lista", async ({ request }) => {
+    const r = await request.get(`${API_URL}/api/patrimony`, { headers });
+    // 200 (lista) ou 404 se módulo ainda não foi liberado em prod
     expect([200, 404]).toContain(r.status());
   });
 });

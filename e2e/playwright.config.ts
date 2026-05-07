@@ -11,6 +11,18 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:5173";
 const API_URL = process.env.API_URL || "http://127.0.0.1:8001";
 const IS_PROD = process.env.E2E_ENV === "production";
 
+// HARD GUARD: nunca rodar suites destrutivas em produção sem opt-in explícito
+const PROD_HOST_RE =
+  /onrender\.com|vercel\.app|herokuapp\.com|railway\.app|fly\.dev|neon\.tech|amazonaws\.com|azurewebsites\.net|appspot\.com/i;
+const looksProd = PROD_HOST_RE.test(API_URL) || PROD_HOST_RE.test(BASE_URL);
+if (looksProd && process.env.ALLOW_PROD_DESTRUCTIVE !== "true") {
+  // Apenas avisa; o filtro real está em cada projeto via testIgnore abaixo
+  console.warn(
+    `\n⚠️  Produção detectada (${API_URL}). Suites api/ui serão IGNORADAS sem ALLOW_PROD_DESTRUCTIVE=true.\n   Use --project=smoke para checks read-only seguros.\n`
+  );
+}
+const PROD_LOCK = looksProd && process.env.ALLOW_PROD_DESTRUCTIVE !== "true";
+
 export default defineConfig({
   testDir: "./tests",
   globalTeardown: "./global-teardown.ts",
@@ -42,6 +54,7 @@ export default defineConfig({
     {
       name: "api",
       testDir: "./tests/api",
+      testIgnore: PROD_LOCK ? /.*/ : undefined,
       use: {
         baseURL: API_URL,
       },
@@ -50,6 +63,7 @@ export default defineConfig({
     {
       name: "chromium",
       testDir: "./tests/ui",
+      testIgnore: PROD_LOCK ? /.*/ : undefined,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: BASE_URL,
@@ -59,6 +73,7 @@ export default defineConfig({
     {
       name: "firefox",
       testDir: "./tests/ui",
+      testIgnore: PROD_LOCK ? /.*/ : undefined,
       use: {
         ...devices["Desktop Firefox"],
         baseURL: BASE_URL,
@@ -68,6 +83,7 @@ export default defineConfig({
     {
       name: "mobile",
       testDir: "./tests/ui",
+      testIgnore: PROD_LOCK ? /.*/ : undefined,
       use: {
         ...devices["iPhone 14"],
         baseURL: BASE_URL,
