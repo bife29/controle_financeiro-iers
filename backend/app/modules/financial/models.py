@@ -47,6 +47,7 @@ class Transaction(Base):
     is_recurring = Column(Boolean, default=False)
     recurring_group_id = Column(String(50), nullable=True)  # UUID para agrupar recorrentes
     imported_from = Column(String(50), nullable=True)  # ofx / csv / manual
+    bank_origin = Column(String(100), nullable=True)  # Banco de origem (ex: Bradesco, Itaú)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

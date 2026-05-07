@@ -948,13 +948,20 @@ async def list_audit_logs(
 async def import_transactions(
     file: UploadFile = File(...),
     project_id: Optional[int] = Form(None),
+    category_id: Optional[int] = Form(None),
+    member_id: Optional[int] = Form(None),
+    bank_origin: Optional[str] = Form(None),
+    type_filter: Optional[str] = Form(None),
+    skip_duplicates: Optional[bool] = Form(False),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("super_admin", "financeiro"))
 ):
     """
     Importa transações de arquivo OFX ou CSV.
     Retorna preview das transações e possíveis duplicidades.
-    Projeto é opcional — pode classificar depois.
+    Projeto, categoria, membro e banco são opcionais.
+    type_filter: 'Entrada' ou 'Saída' para importar somente um tipo.
+    skip_duplicates: True para ignorar verificação de duplicatas.
     """
     content = await file.read()
     filename = (file.filename or "").lower()
@@ -979,6 +986,15 @@ async def import_transactions(
             raise HTTPException(status_code=400, detail=f"Erro ao parsear OFX: {str(e)}")
 
         if ofx.account and ofx.account.statement:
+            # Tentar extrair nome do banco do OFX
+            detected_bank = bank_origin
+            if not detected_bank:
+                try:
+                    if hasattr(ofx.account, 'institution') and ofx.account.institution:
+                        detected_bank = getattr(ofx.account.institution, 'organization', None)
+                except Exception:
+                    pass
+
             for t in ofx.account.statement.transactions:
                 tx_date = t.date.date() if hasattr(t.date, 'date') else t.date
                 tx_type = "Entrada" if t.amount > 0 else "Saída"
@@ -990,6 +1006,7 @@ async def import_transactions(
                     "payment_method": "Transferência Bancária",
                     "status": "Previsto",
                     "imported_from": "ofx",
+                    "bank_origin": detected_bank,
                 })
 
     elif filename.endswith(".csv"):
@@ -1016,7 +1033,21 @@ async def import_transactions(
                 "payment_method": "Transferência Bancária",
                 "status": "Previsto",
                 "imported_from": "csv",
+                "bank_origin": bank_origin,
             })
+
+    # Aplicar filtro de tipo (Entrada ou Saída)
+    if type_filter and type_filter in ("Entrada", "Saída"):
+        preview = [tx for tx in preview if tx["type"] == type_filter]
+
+    # Verificar duplicidades (pular se skip_duplicates=True)
+    if skip_duplicates:
+        return {
+            "preview": preview,
+            "possiveis_duplicidades": [],
+            "total_importado": len(preview),
+            "total_duplicidades": 0,
+        }
 
     # Verificar duplicidades (transações existentes com valores/datas similares)
     if project_id:
@@ -1074,11 +1105,14 @@ async def confirm_import(
 ):
     """
     Confirma e salva as transações importadas no banco de dados.
-    Body: { "transactions": [...], "project_id": int | null }
-    Projeto é opcional — pode classificar depois.
+    Body: { "transactions": [...], "project_id": int | null, "category_id": int | null, "member_id": int | null, "bank_origin": str | null }
+    Todos os campos globais são opcionais — podem ser definidos individualmente por transação.
     """
     transactions = payload.get("transactions", [])
     project_id = payload.get("project_id")
+    global_category_id = payload.get("category_id")
+    global_member_id = payload.get("member_id")
+    global_bank_origin = payload.get("bank_origin")
     if not transactions:
         raise HTTPException(status_code=400, detail="transactions é obrigatório")
     created = []
@@ -1089,10 +1123,12 @@ async def confirm_import(
             value=tx_data["value"],
             description=tx_data.get("description"),
             payment_method=tx_data.get("payment_method", "Transferência Bancária"),
-            category_id=tx_data.get("category_id"),
+            category_id=tx_data.get("category_id") or global_category_id,
+            member_id=tx_data.get("member_id") or global_member_id,
             project_id=tx_data.get("project_id") or project_id,
             status=tx_data.get("status", "Previsto"),
             imported_from=tx_data.get("imported_from", "manual"),
+            bank_origin=tx_data.get("bank_origin") or global_bank_origin,
             created_by=current_user.id,
         )
         db.add(tx)

@@ -86,6 +86,7 @@ class TransactionUpdate(BaseModel):
     member_id: Optional[int] = None
     project_id: Optional[int] = None
     status: Optional[str] = None
+    bank_origin: Optional[str] = None
 
 
 class TransactionResponse(BaseModel):
@@ -102,6 +103,7 @@ class TransactionResponse(BaseModel):
     imported_from: Optional[str] = None
     is_recurring: bool = False
     recurring_group_id: Optional[str] = None
+    bank_origin: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:

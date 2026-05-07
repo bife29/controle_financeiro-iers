@@ -127,7 +127,7 @@ export function TransactionForm() {
       status: form.status,
     }
 
-    if (isRecurring && !isEditing) {
+    if (isRecurring) {
       baseData.recurrence_count = Number(recurrenceCount)
       if (recurrenceDay) baseData.recurrence_day = Number(recurrenceDay)
     }
@@ -297,9 +297,8 @@ export function TransactionForm() {
           </div>
         </div>
 
-        {/* Recorrência (apenas ao criar) */}
-        {!isEditing && (
-          <div className="border rounded-lg p-4 space-y-3">
+        {/* Recorrência */}
+        <div className="border rounded-lg p-4 space-y-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -340,8 +339,7 @@ export function TransactionForm() {
                 </p>
               </div>
             )}
-          </div>
-        )}
+        </div>
 
         {/* Botões */}
         <div className="flex justify-end gap-3 pt-4">

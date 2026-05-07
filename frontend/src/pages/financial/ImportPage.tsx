@@ -16,6 +16,7 @@ interface PreviewTransaction {
   status: string
   imported_from: string
   category_id?: number | null
+  bank_origin?: string | null
 }
 
 interface DuplicateItem {
@@ -68,11 +69,21 @@ interface Project {
   name: string
 }
 
+interface MemberSummary {
+  id: number
+  name: string
+}
+
 export function ImportPage() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [projectId, setProjectId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [memberId, setMemberId] = useState('')
+  const [bankOrigin, setBankOrigin] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [skipDuplicates, setSkipDuplicates] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -92,6 +103,11 @@ export function ImportPage() {
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
     queryFn: () => api.get('/api/financial/categories').then((r) => r.data),
+  })
+
+  const { data: members = [] } = useQuery<MemberSummary[]>({
+    queryKey: ['members-summary'],
+    queryFn: () => api.get('/api/members/summary').then((r) => r.data),
   })
 
   const fmt = (v: number) =>
@@ -137,6 +153,21 @@ export function ImportPage() {
       if (projectId) {
         formData.append('project_id', projectId)
       }
+      if (categoryId) {
+        formData.append('category_id', categoryId)
+      }
+      if (memberId) {
+        formData.append('member_id', memberId)
+      }
+      if (bankOrigin) {
+        formData.append('bank_origin', bankOrigin)
+      }
+      if (typeFilter) {
+        formData.append('type_filter', typeFilter)
+      }
+      if (skipDuplicates) {
+        formData.append('skip_duplicates', 'true')
+      }
 
       const response = await api.post('/api/financial/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -144,6 +175,11 @@ export function ImportPage() {
 
       const result: ImportResult = response.data
       setImportResult(result)
+
+      // Auto-preencher banco de origem se veio do OFX
+      if (!bankOrigin && result.preview.length > 0 && result.preview[0].bank_origin) {
+        setBankOrigin(result.preview[0].bank_origin)
+      }
 
       // Buscar sugestões de categoria (ML)
       if (result.preview.length > 0) {
@@ -202,6 +238,9 @@ export function ImportPage() {
       await api.post('/api/financial/import/confirm', {
         transactions: toImport,
         project_id: projectId ? Number(projectId) : null,
+        category_id: categoryId ? Number(categoryId) : null,
+        member_id: memberId ? Number(memberId) : null,
+        bank_origin: bankOrigin || null,
       })
 
       setSuccess(`${toImport.length} transações importadas com sucesso!`)
@@ -259,9 +298,9 @@ export function ImportPage() {
 
       {/* Upload Form */}
       <div className="bg-card border rounded-xl p-6 space-y-4">
-        <h2 className="font-semibold text-lg">1. Selecione o arquivo e o projeto</h2>
+        <h2 className="font-semibold text-lg">1. Selecione o arquivo e configure a importação</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Projeto de destino (opcional)</label>
             <select
@@ -274,9 +313,57 @@ export function ImportPage() {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Categoria (opcional)</label>
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+            >
+              <option value="">Nenhuma (classificar depois)</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Membro (opcional)</label>
+            <select
+              value={memberId}
+              onChange={(e) => setMemberId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+            >
+              <option value="">Nenhum</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Banco de origem (opcional)</label>
+            <input
+              type="text"
+              placeholder="Ex: Bradesco, Itaú, Sicoob..."
+              value={bankOrigin}
+              onChange={(e) => setBankOrigin(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+            />
             <p className="text-xs text-muted-foreground mt-1">
-              Pode importar sem projeto e classificar individualmente depois
+              Preenchido automaticamente para arquivos OFX quando disponível
             </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Filtrar por tipo</label>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+            >
+              <option value="">Todos (Entradas e Saídas)</option>
+              <option value="Entrada">Somente Entradas</option>
+              <option value="Saída">Somente Saídas</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Arquivo (.ofx ou .csv) *</label>
@@ -288,6 +375,18 @@ export function ImportPage() {
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none file:mr-3 file:px-3 file:py-1 file:rounded file:border-0 file:bg-primary file:text-primary-foreground file:text-sm file:cursor-pointer"
             />
           </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <input
+              type="checkbox"
+              checked={skipDuplicates}
+              onChange={(e) => setSkipDuplicates(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300"
+            />
+            Ignorar duplicidades (importar tudo)
+          </label>
         </div>
 
         {selectedFile && (

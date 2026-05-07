@@ -79,6 +79,10 @@ async def _apply_migrations(conn):
             await conn.execute(text(
                 "ALTER TABLE transactions ADD COLUMN recurring_group_id VARCHAR(50)"
             ))
+        if "bank_origin" not in columns:
+            await conn.execute(text(
+                "ALTER TABLE transactions ADD COLUMN bank_origin VARCHAR(100)"
+            ))
         # Make project_id nullable (PostgreSQL syntax differs from SQLite)
         # SQLite doesn't support ALTER COLUMN, but new tables will use the new schema
         try:

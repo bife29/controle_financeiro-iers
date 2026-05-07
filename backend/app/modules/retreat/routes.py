@@ -7,6 +7,7 @@ from ...core.database import get_db
 from ...core.security import get_current_user, require_roles
 from .models import Retreat, RetreatParticipant, RetreatPayment
 from ..financial.models import Transaction, Project
+from ..members.models import Member
 from .schemas import (
     RetreatCreate, RetreatUpdate, RetreatResponse,
     ParticipantCreate, ParticipantUpdate, ParticipantResponse,
@@ -304,7 +305,20 @@ async def list_participants(
         query = query.where(RetreatParticipant.inscription_status == inscription_status)
     query = query.order_by(RetreatParticipant.registered_at.desc())
     result = await db.execute(query)
-    return result.scalars().all()
+    participants = result.scalars().all()
+
+    # Preencher nome do membro quando participant.name está vazio
+    member_ids = [p.member_id for p in participants if p.member_id and not p.name]
+    if member_ids:
+        members_result = await db.execute(
+            select(Member.id, Member.name).where(Member.id.in_(member_ids))
+        )
+        member_names = {row.id: row.name for row in members_result}
+        for p in participants:
+            if p.member_id and not p.name and p.member_id in member_names:
+                p.name = member_names[p.member_id]
+
+    return participants
 
 
 @router.post("/{retreat_id}/participants", response_model=ParticipantResponse)
