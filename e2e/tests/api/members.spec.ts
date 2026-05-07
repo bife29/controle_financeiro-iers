@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag, tagEmail } from "../../helpers/e2e-tag";
 
 test.describe("Módulo Membros", () => {
   let headers: Record<string, string>;
@@ -22,7 +23,7 @@ test.describe("Módulo Membros", () => {
 
   test("POST /api/members/ cria membro com dados mínimos", async ({ request }) => {
     const member = {
-      name: `Membro Teste E2E ${Date.now()}`,
+      name: tag(`Membro Teste ${Date.now()}`),
       estado_civil: "Solteiro(a)",
     };
 
@@ -41,10 +42,10 @@ test.describe("Módulo Membros", () => {
   test("POST /api/members/ cria membro com todos os campos de contato", async ({ request }) => {
     const ts = Date.now();
     const member = {
-      name: `Contato Teste E2E ${ts}`,
+      name: tag(`Contato Teste ${ts}`),
       cel: "(21) 99999-8888",
       tel: "(21) 3333-4444",
-      email: `contato.${ts}@e2e.com`,
+      email: tagEmail(`contato-${ts}`),
       cpf: `${String(ts).slice(-3)}.${String(ts).slice(-6,-3)}.${String(ts).slice(-9,-6)}-${String(ts).slice(-11,-9) || '00'}`,
       cidade: "Rio de Janeiro",
       bairro: "Centro",
@@ -80,7 +81,7 @@ test.describe("Módulo Membros", () => {
     expect(member.id).toBe(createdMemberId);
     expect(member.cel).toBe("(21) 99999-8888");
     expect(member.tel).toBe("(21) 3333-4444");
-    expect(member.email).toContain("@e2e.com");
+    expect(member.email).toContain("@iers-e2e.org");
     expect(member.cpf).toBeTruthy();
     expect(member.cidade).toBe("Rio de Janeiro");
   });
@@ -102,7 +103,7 @@ test.describe("Módulo Membros", () => {
     expect(updated.cel).toBe(update.cel);
     expect(updated.tel).toBe(update.tel);
     // Campos não enviados devem permanecer inalterados
-    expect(updated.email).toContain("@e2e.com");
+    expect(updated.email).toContain("@iers-e2e.org");
   });
 
   test("GET /api/members/ retorna cel e tel na listagem", async ({ request }) => {
@@ -138,7 +139,7 @@ test.describe("Módulo Membros", () => {
 
   test("GET /api/members/?search= busca por nome", async ({ request }) => {
     // Cria um membro primeiro
-    const uniqueName = `BuscaTeste${Date.now()}`;
+    const uniqueName = tag(`BuscaTeste${Date.now()}`);
     await request.post("/api/members/", {
       headers,
       data: { name: uniqueName, estado_civil: "Casado(a)" },
@@ -178,7 +179,7 @@ test.describe("Módulo Membros", () => {
     const ts = Date.now();
     const cpf = `${String(ts).slice(-3)}.${String(ts).slice(-6, -3)}.${String(ts).slice(-9, -6)}-99`;
     const base = {
-      name: `Dup CPF E2E ${ts}`,
+      name: tag(`Dup CPF ${ts}`),
       cpf,
     };
 
@@ -209,13 +210,13 @@ test.describe("Módulo Membros", () => {
 
     const first = await request.post("/api/members/", {
       headers,
-      data: { name: `Dup Ficha E2E ${ts}`, ficha_num: ficha },
+      data: { name: tag(`Dup Ficha ${ts}`), ficha_num: ficha },
     });
     expect(first.ok()).toBeTruthy();
 
     const second = await request.post("/api/members/", {
       headers,
-      data: { name: `Dup Ficha 2 E2E ${ts}`, ficha_num: ficha },
+      data: { name: tag(`Dup Ficha 2 ${ts}`), ficha_num: ficha },
     });
     expect(second.status()).toBe(409);
     const body = await second.json();
@@ -229,7 +230,7 @@ test.describe("Módulo Membros", () => {
     const resp = await request.post("/api/members/", {
       headers,
       data: {
-        name: `Empty Dates E2E ${ts}`,
+        name: tag(`Empty Dates ${ts}`),
         data_nascimento: "",
         data_casamento: "",
         data_membresia: "",

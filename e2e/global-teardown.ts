@@ -111,6 +111,12 @@ async function globalTeardown() {
   );
   await deleteByTag("Patrimônio", "/api/patrimony", (id) => `/api/patrimony/${id}`, ["name"]);
   await deleteByTag(
+    "Categoria Patrimônio",
+    "/api/patrimony/categories",
+    (id) => `/api/patrimony/categories/${id}`,
+    ["name"]
+  );
+  await deleteByTag(
     "Evento Secretaria",
     "/api/secretaria/events",
     (id) => `/api/secretaria/events/${id}`,

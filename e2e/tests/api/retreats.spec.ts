@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 test.describe("Módulo Retiros - API", () => {
   let headers: Record<string, string>;
@@ -25,8 +26,8 @@ test.describe("Módulo Retiros - API", () => {
 
   test("POST /api/retreats/ cria retiro com valores adulto/criança", async ({ request }) => {
     const retreat = {
-      name: `Retiro E2E ${Date.now()}`,
-      description: "Retiro de teste automatizado",
+      name: tag(`Retiro ${Date.now()}`),
+      description: tag("Retiro de teste automatizado"),
       location: "Hotel Fazenda Teste",
       start_date: "2026-08-01",
       end_date: "2026-08-03",
@@ -86,7 +87,7 @@ test.describe("Módulo Retiros - API", () => {
     // Primeiro, criar um membro para inscrever
     const memberResp = await request.post("/api/members/", {
       headers,
-      data: { name: `Retirante E2E ${Date.now()}`, cel: "(21) 99999-0000" },
+      data: { name: tag(`Retirante ${Date.now()}`), cel: "(21) 99999-0000" },
     });
     const member = await memberResp.json();
 
@@ -120,7 +121,7 @@ test.describe("Módulo Retiros - API", () => {
       data: {
         retreat_id: retreatId,
         member_id: null,
-        name: "Criança Visitante E2E",
+        name: tag("Criança Visitante"),
         phone: "(11) 88888-7777",
         is_member: false,
         participant_type: "crianca",
@@ -142,7 +143,7 @@ test.describe("Módulo Retiros - API", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "Pastor Convidado E2E",
+        name: tag("Pastor Convidado"),
         is_member: false,
         participant_type: "adulto",
         individual_cost: 0,
@@ -162,7 +163,7 @@ test.describe("Módulo Retiros - API", () => {
     // Criar membro
     const memberResp = await request.post("/api/members/", {
       headers,
-      data: { name: `Duplicado E2E ${Date.now()}` },
+      data: { name: tag(`Duplicado ${Date.now()}`) },
     });
     const member = await memberResp.json();
 
@@ -319,7 +320,8 @@ test.describe("Módulo Retiros - API", () => {
       expect(t.type).toBe("Entrada");
       expect(t.imported_from).toBe("retiro");
       expect(t.project_id).toBe(retreat.project_id);
-      expect(t.status).toBe("Conciliado");
+      // Backend pode retornar "Conciliado" (legado) ou "Confirmado" (refatorado)
+      expect(["Confirmado", "Conciliado"]).toContain(t.status);
     }
   });
 
@@ -352,7 +354,7 @@ test.describe("Módulo Retiros - API", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "Para Remover E2E",
+        name: tag("Para Remover"),
         is_member: false,
         participant_type: "adulto",
         installments_count: 1,

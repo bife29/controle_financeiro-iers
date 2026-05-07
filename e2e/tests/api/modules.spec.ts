@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 test.describe("Módulo Feedback", () => {
   let headers: Record<string, string>;
@@ -20,8 +21,8 @@ test.describe("Módulo Feedback", () => {
   test("POST /api/feedback/ cria feedback de sugestão", async ({ request }) => {
     const feedback = {
       type: "sugestao",
-      title: `Sugestão E2E ${Date.now()}`,
-      description: "Teste automatizado de criação de feedback",
+      title: tag(`Sugestão ${Date.now()}`),
+      description: tag("Teste automatizado de criação de feedback"),
       module: "financeiro",
       priority: "media",
     };
@@ -42,8 +43,8 @@ test.describe("Módulo Feedback", () => {
   test("POST /api/feedback/ cria report de erro", async ({ request }) => {
     const feedback = {
       type: "erro",
-      title: `Erro E2E ${Date.now()}`,
-      description: "Report de erro via teste automatizado",
+      title: tag(`Erro ${Date.now()}`),
+      description: tag("Report de erro via teste automatizado"),
       module: "membros",
       priority: "alta",
     };

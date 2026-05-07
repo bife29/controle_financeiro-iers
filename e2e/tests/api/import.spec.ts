@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 test.describe("Importação OFX/CSV - API", () => {
   let headers: Record<string, string>;
@@ -14,8 +15,8 @@ test.describe("Importação OFX/CSV - API", () => {
     const projResp = await request.post("/api/financial/projects", {
       headers,
       data: {
-        name: `Projeto Import E2E ${Date.now()}`,
-        description: "Para testes de importação",
+        name: tag(`Projeto Import ${Date.now()}`),
+        description: tag("Para testes de importação"),
         start_date: "2026-01-01",
       },
     });
@@ -71,8 +72,8 @@ test.describe("Importação OFX/CSV - API", () => {
 
   test("POST /api/financial/import/confirm salva transações CSV no banco", async ({ request }) => {
     const transactions = [
-      { date: "2026-04-01", type: "Entrada", value: 300.0, description: "Dízimo Confirmado E2E", imported_from: "csv" },
-      { date: "2026-04-02", type: "Saída", value: 75.0, description: "Despesa Confirmada E2E", imported_from: "csv" },
+      { date: "2026-04-01", type: "Entrada", value: 300.0, description: tag("Dízimo Confirmado CSV"), imported_from: "csv" },
+      { date: "2026-04-02", type: "Saída", value: 75.0, description: tag("Despesa Confirmada CSV"), imported_from: "csv" },
     ];
 
     const response = await request.post("/api/financial/import/confirm", {
@@ -104,8 +105,8 @@ test.describe("Importação OFX/CSV - API", () => {
   test("POST /api/financial/import detecta duplicidades CSV", async ({ request }) => {
     // Enviar CSV com mesma transação que já foi confirmada
     const csvDuplicate = `Data,Valor,Descrição
-2026-04-01,300.00,Dízimo Confirmado E2E
-2026-04-10,500.00,Nova Entrada Abril`;
+2026-04-01,300.00,${tag("Dízimo Confirmado CSV")}
+2026-04-10,500.00,${tag("Nova Entrada Abril")}`;
 
     const response = await request.post("/api/financial/import", {
       headers,
@@ -125,7 +126,7 @@ test.describe("Importação OFX/CSV - API", () => {
     expect(result.total_duplicidades).toBeGreaterThanOrEqual(1);
     expect(result.possiveis_duplicidades.length).toBeGreaterThanOrEqual(1);
     // A transação não-duplicada deve estar no preview
-    const novas = result.preview.filter((t: any) => t.description === "Nova Entrada Abril");
+    const novas = result.preview.filter((t: any) => t.description === tag("Nova Entrada Abril"));
     expect(novas.length).toBe(1);
   });
 
@@ -234,8 +235,8 @@ NEWFILEUID:NONE
 
   test("POST /api/financial/import/confirm salva transações OFX no banco", async ({ request }) => {
     const transactions = [
-      { date: "2026-03-05", type: "Entrada", value: 1500.0, description: "TED RECEBIDA - DIZIMO MARCO", imported_from: "ofx" },
-      { date: "2026-03-10", type: "Saída", value: 350.0, description: "PAGTO CONTA LUZ", imported_from: "ofx" },
+      { date: "2026-03-05", type: "Entrada", value: 1500.0, description: tag("TED RECEBIDA - DIZIMO MARCO"), imported_from: "ofx" },
+      { date: "2026-03-10", type: "Saída", value: 350.0, description: tag("PAGTO CONTA LUZ"), imported_from: "ofx" },
     ];
 
     const response = await request.post("/api/financial/import/confirm", {
@@ -247,7 +248,8 @@ NEWFILEUID:NONE
 
     const result = await response.json();
     expect(result.count).toBe(2);
-    expect(result.message).toContain("2 transações importadas");
+    // Mensagem do backend após refatoração financeira: "X criadas, Y previstos confirmados"
+    expect(result.message.toLowerCase()).toMatch(/2 (transações )?(importadas|criadas)/);
   });
 
   test("OFX importado aparece nas transações com imported_from=ofx", async ({ request }) => {
@@ -340,9 +342,9 @@ NEWFILEUID:NONE
   test("POST /api/financial/import/confirm salva transações Santander no banco", async ({ request }) => {
     // Confirmar subset das transações Santander
     const transactions = [
-      { date: "2026-03-02", type: "Entrada", value: 1000.0, description: "Pix Recebido 00077788899", imported_from: "ofx" },
-      { date: "2026-03-02", type: "Saída", value: 50.0, description: "Pix Enviado Joao da Silva", imported_from: "ofx" },
-      { date: "2026-03-02", type: "Saída", value: 9.9, description: "Tarifa Avulsa Envio Pix 27/02/2026", imported_from: "ofx" },
+      { date: "2026-03-02", type: "Entrada", value: 1000.0, description: tag("Pix Recebido 00077788899"), imported_from: "ofx" },
+      { date: "2026-03-02", type: "Saída", value: 50.0, description: tag("Pix Enviado Joao da Silva"), imported_from: "ofx" },
+      { date: "2026-03-02", type: "Saída", value: 9.9, description: tag("Tarifa Avulsa Envio Pix 27/02/2026"), imported_from: "ofx" },
     ];
 
     const response = await request.post("/api/financial/import/confirm", {

@@ -48,3 +48,7 @@ Desktop.ini
 
 # Legacy files
 FINANCEIROAT*
+
+# E2E prod run logs
+e2e/prod-*-run.log
+prod-*-run.log

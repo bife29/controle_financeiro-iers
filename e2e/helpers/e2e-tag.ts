@@ -21,8 +21,9 @@ export function tag(label: string): string {
 /** Email com a tag (válido como local-part de e-mail). */
 export function tagEmail(local: string): string {
   // colchetes não são válidos em e-mail; usamos formato e2e-<runId>-<local>@
+  // Domínio iers-e2e.org evita TLDs reservados como .test/.example/.invalid
   const safe = E2E_TAG.replace(/[\[\]\s]/g, "").toLowerCase();
-  return `${safe}-${local}@e2e.iers.test`;
+  return `${safe}-${local}@iers-e2e.org`;
 }
 
 /** Verifica se um valor textual contém a tag deste run (para asserts/cleanup). */

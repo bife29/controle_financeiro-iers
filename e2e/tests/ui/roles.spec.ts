@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag, tagEmail } from "../../helpers/e2e-tag";
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8001";
 
@@ -11,10 +12,10 @@ interface TestUser {
 }
 
 const ROLES: TestUser[] = [
-  { name: "Pastor E2E", email: `pastor_e2e_${Date.now()}@test.com`, password: "senha123", role: "pastor" },
-  { name: "Financeiro E2E", email: `fin_e2e_${Date.now()}@test.com`, password: "senha123", role: "financeiro" },
-  { name: "Secretaria E2E", email: `sec_e2e_${Date.now()}@test.com`, password: "senha123", role: "secretaria" },
-  { name: "Viewer E2E", email: `viewer_e2e_${Date.now()}@test.com`, password: "senha123", role: "viewer" },
+  { name: tag("Pastor"), email: tagEmail(`pastor-${Date.now()}`), password: "senha123", role: "pastor" },
+  { name: tag("Financeiro"), email: tagEmail(`fin-${Date.now()}`), password: "senha123", role: "financeiro" },
+  { name: tag("Secretaria"), email: tagEmail(`sec-${Date.now()}`), password: "senha123", role: "secretaria" },
+  { name: tag("Viewer"), email: tagEmail(`viewer-${Date.now()}`), password: "senha123", role: "viewer" },
 ];
 
 // Quais links da sidebar cada role deve ver

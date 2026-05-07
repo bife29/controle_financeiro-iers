@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { tag } from "../../helpers/e2e-tag";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -50,11 +51,11 @@ test.describe("Feedback - UI", () => {
     const titleInput = page.getByPlaceholder(/título/i).or(page.getByLabel(/título/i));
 
     if (await titleInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await titleInput.fill(`Feedback E2E ${Date.now()}`);
+      await titleInput.fill(tag(`Feedback ${Date.now()}`));
 
       const descInput = page.getByPlaceholder(/descrição|descreva/i).or(page.getByLabel(/descrição/i));
       if (await descInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await descInput.fill("Teste automatizado via Playwright");
+        await descInput.fill(tag("Teste automatizado via Playwright"));
       }
 
       const submitBtn = page.getByRole("button", { name: /enviar|salvar|submit/i });

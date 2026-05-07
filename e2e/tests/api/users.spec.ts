@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders, getAuthToken } from "../../helpers/auth";
+import { tag, tagEmail } from "../../helpers/e2e-tag";
 
 test.describe("Gestão de Usuários - API", () => {
   let headers: Record<string, string>;
@@ -29,8 +30,8 @@ test.describe("Gestão de Usuários - API", () => {
 
   test("POST /api/auth/register cria novo usuário", async ({ request }) => {
     const newUser = {
-      name: `Usuário E2E ${Date.now()}`,
-      email: `e2e_${Date.now()}@test.com`,
+      name: tag(`Usuário ${Date.now()}`),
+      email: tagEmail(`user-${Date.now()}`),
       password: "senha123",
       role: "viewer",
     };

@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { getAuthHeaders, API_URL } from "../../helpers/auth";
+import { tag, tagEmail } from "../../helpers/e2e-tag";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -76,7 +77,7 @@ test.describe("Gestão de Usuários - UI", () => {
   });
 
   test("cria usuário via UI e aparece na lista", async ({ page, request }) => {
-    const uniqueEmail = `uitest_${Date.now()}@test.com`;
+    const uniqueEmail = tagEmail(`uitest-${Date.now()}`);
 
     await page.getByRole("link", { name: /usu[aá]rio/i }).click();
     await expect(page).toHaveURL(/usuarios/, { timeout: 5000 });
@@ -87,7 +88,7 @@ test.describe("Gestão de Usuários - UI", () => {
       .click();
 
     // Preencher formulário
-    await page.getByPlaceholder(/nome/i).fill("Teste UI User");
+    await page.getByPlaceholder(/nome/i).fill(tag("Teste UI User"));
     await page.getByPlaceholder(/email/i).fill(uniqueEmail);
     await page.locator('input[type="password"]').first().fill("senha123");
 

@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { getAuthHeaders, API_URL } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -43,7 +44,7 @@ test.describe("Membros - UI", () => {
   });
 
   test("cadastrar membro com celular e verificar na lista", async ({ page, request }) => {
-    const uniqueName = `UITest ${Date.now()}`;
+    const uniqueName = tag(`UITest ${Date.now()}`);
     const celular = "(21) 91234-5678";
 
     // Criar membro via API para garantir dados de teste
@@ -66,7 +67,7 @@ test.describe("Membros - UI", () => {
   });
 
   test("página de detalhe exibe campos de contato", async ({ page, request }) => {
-    const uniqueName = `DetalheTest ${Date.now()}`;
+    const uniqueName = tag(`DetalheTest ${Date.now()}`);
     const celular = "(11) 98765-1234";
     const telefone = "(11) 3456-7890";
     const email = "detalhe@teste.com";
@@ -96,7 +97,7 @@ test.describe("Membros - UI", () => {
   });
 
   test("página de detalhe exibe tel quando cel está vazio", async ({ page, request }) => {
-    const uniqueName = `TelFallback ${Date.now()}`;
+    const uniqueName = tag(`TelFallback ${Date.now()}`);
     const telefone = "(21) 2222-3333";
 
     // Criar membro só com tel (sem cel)
@@ -116,7 +117,7 @@ test.describe("Membros - UI", () => {
   });
 
   test("lista exibe tel como fallback quando cel está vazio", async ({ page, request }) => {
-    const uniqueName = `ListaFallback ${Date.now()}`;
+    const uniqueName = tag(`ListaFallback ${Date.now()}`);
     const telefone = "(31) 4444-5555";
 
     // Criar membro só com tel

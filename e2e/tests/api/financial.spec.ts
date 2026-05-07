@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 test.describe("Módulo Financeiro - Categorias", () => {
   let headers: Record<string, string>;
@@ -55,8 +56,8 @@ test.describe("Módulo Financeiro - Projetos", () => {
 
   test("POST /api/financial/projects cria projeto", async ({ request }) => {
     const newProject = {
-      name: `Projeto Teste E2E ${Date.now()}`,
-      description: "Criado por teste E2E",
+      name: tag(`Projeto Teste ${Date.now()}`),
+      description: tag("Criado por teste E2E"),
       start_date: "2026-01-01",
     };
 
@@ -101,7 +102,7 @@ test.describe("Módulo Financeiro - Transações", () => {
 
     const transaction = {
       date: new Date().toISOString().split("T")[0],
-      description: `Entrada E2E ${Date.now()}`,
+      description: tag(`Entrada ${Date.now()}`),
       value: 150.0,
       type: "Entrada",
       category_id: entradaCat.id,
@@ -137,7 +138,7 @@ test.describe("Módulo Financeiro - Transações", () => {
         headers,
         data: {
           date: new Date().toISOString().split("T")[0],
-          description: `Batch delete E2E ${Date.now()}-${i}`,
+          description: tag(`Batch delete ${Date.now()}-${i}`),
           value: 1.0,
           type: "Entrada",
           category_id: entradaCat.id,
@@ -185,7 +186,7 @@ test.describe("Módulo Financeiro - Transações", () => {
       headers,
       data: {
         date: "2026-04-01",
-        description: `Edit E2E ${Date.now()}`,
+        description: tag(`Edit ${Date.now()}`),
         value: 99.99,
         type: "Entrada",
         category_id: entradaCat.id,
@@ -199,7 +200,7 @@ test.describe("Módulo Financeiro - Transações", () => {
     const upd = await request.put(`/api/financial/transactions/${tx.id}`, {
       headers,
       data: {
-        description: "Editada via E2E",
+        description: tag("Editada via"),
         value: 123.45,
         status: "Confirmado",
         project_id: null,
@@ -207,7 +208,7 @@ test.describe("Módulo Financeiro - Transações", () => {
     });
     expect(upd.status()).toBe(200);
     const updated = await upd.json();
-    expect(updated.description).toBe("Editada via E2E");
+    expect(updated.description).toBe(tag("Editada via"));
     expect(Number(updated.value)).toBe(123.45);
     expect(updated.status).toBe("Confirmado");
     expect(updated.project_id).toBeNull();
@@ -226,7 +227,7 @@ test.describe("Módulo Financeiro - Transações", () => {
       headers,
       data: {
         date: "2026-05-10",
-        description: `Confirm E2E ${Date.now()}`,
+        description: tag(`Confirm ${Date.now()}`),
         value: 250.0,
         type: "Entrada",
         category_id: entradaCat.id,

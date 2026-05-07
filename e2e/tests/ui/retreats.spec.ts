@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { getAuthHeaders, API_URL } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/");
@@ -43,7 +44,7 @@ test.describe("Retiros - UI", () => {
     await page.getByRole("link", { name: /novo/i }).click();
     await expect(page).toHaveURL(/retiros\/novo/, { timeout: 5000 });
 
-    const retiroName = `UI Retiro ${Date.now()}`;
+    const retiroName = tag(`UI Retiro ${Date.now()}`);
 
     // Preencher formulário
     await page.getByRole('textbox', { name: /Retiro de Carnaval/i }).fill(retiroName);
@@ -65,7 +66,7 @@ test.describe("Retiros - UI", () => {
     const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
-        name: `Dashboard UI ${Date.now()}`,
+        name: tag(`Dashboard UI ${Date.now()}`),
         start_date: "2026-10-01",
         end_date: "2026-10-03",
         cost_adult: 300,
@@ -94,7 +95,7 @@ test.describe("Retiros - UI", () => {
     const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
-        name: `Participantes UI ${Date.now()}`,
+        name: tag(`Participantes UI ${Date.now()}`),
         start_date: "2026-11-01",
         end_date: "2026-11-03",
         cost_adult: 500,
@@ -123,7 +124,7 @@ test.describe("Retiros - UI", () => {
     const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
-        name: `Modal UI ${Date.now()}`,
+        name: tag(`Modal UI ${Date.now()}`),
         start_date: "2026-12-01",
         end_date: "2026-12-03",
         cost_adult: 350,
@@ -151,7 +152,7 @@ test.describe("Retiros - UI", () => {
     const resp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
-        name: `Inscrição UI ${Date.now()}`,
+        name: tag(`Inscrição UI ${Date.now()}`),
         start_date: "2027-01-01",
         end_date: "2027-01-03",
         cost_adult: 400,
@@ -172,7 +173,7 @@ test.describe("Retiros - UI", () => {
     await page.getByText(/visitante|convidado/i).click();
 
     // Preencher dados
-    const visitorName = `Visitante UI ${Date.now()}`;
+    const visitorName = tag(`Visitante UI ${Date.now()}`);
     await page.getByPlaceholder(/nome completo/i).fill(visitorName);
     await page.getByPlaceholder(/00000-0000/i).fill("(21) 99988-7766");
 
@@ -192,7 +193,7 @@ test.describe("Retiros - UI", () => {
     const retreatResp = await request.post(`${API_URL}/api/retreats/`, {
       headers,
       data: {
-        name: `Carnê UI ${Date.now()}`,
+        name: tag(`Carnê UI ${Date.now()}`),
         start_date: "2027-02-01",
         end_date: "2027-02-03",
         cost_adult: 600,
@@ -206,7 +207,7 @@ test.describe("Retiros - UI", () => {
       headers,
       data: {
         retreat_id: retreat.id,
-        name: "Testador Carnê",
+        name: tag("Testador Carnê"),
         is_member: false,
         participant_type: "adulto",
         installments_count: 4,

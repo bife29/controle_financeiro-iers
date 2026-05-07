@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 test.describe("Módulo Patrimônio", () => {
   let headers: Record<string, string>;
@@ -34,7 +35,7 @@ test.describe("Módulo Patrimônio", () => {
 
   test("POST /api/patrimony/categories rejeita duplicado", async ({ request }) => {
     const ts = Date.now();
-    const name = `Categoria E2E ${ts}`;
+    const name = tag(`Categoria ${ts}`);
     const r1 = await request.post("/api/patrimony/categories", { headers, data: { name } });
     expect(r1.ok()).toBeTruthy();
     const r2 = await request.post("/api/patrimony/categories", { headers, data: { name } });
@@ -45,7 +46,7 @@ test.describe("Módulo Patrimônio", () => {
     const r = await request.post("/api/patrimony/", {
       headers,
       data: {
-        name: `Bem E2E ${Date.now()}`,
+        name: tag(`Bem ${Date.now()}`),
         category_id: categoryId,
         location_id: locationId,
         acquisition_date: "2024-01-15",

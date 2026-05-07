@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { getAuthHeaders } from "../../helpers/auth";
+import { tag } from "../../helpers/e2e-tag";
 
 test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
   let headers: Record<string, string>;
@@ -17,7 +18,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
     const response = await request.post("/api/retreats/", {
       headers,
       data: {
-        name: `Logística E2E ${Date.now()}`,
+        name: tag(`Logística ${Date.now()}`),
         start_date: "2026-09-01",
         end_date: "2026-09-03",
         max_participants: 10,
@@ -43,7 +44,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "P1 - Bus Sim Bed Sim",
+        name: tag("P1 - Bus Sim Bed Sim"),
         is_member: false,
         participant_type: "adulto",
         bus_option: "Sim",
@@ -64,7 +65,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "P2 - Bus Sim Bed Sim",
+        name: tag("P2 - Bus Sim Bed Sim"),
         is_member: false,
         participant_type: "adulto",
         bus_option: "Sim",
@@ -83,7 +84,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "P3 - Bus Colo Bed Divide",
+        name: tag("P3 - Bus Colo Bed Divide"),
         is_member: false,
         participant_type: "crianca",
         bus_option: "Colo",
@@ -105,7 +106,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "P4 - Espera Bus",
+        name: tag("P4 - Espera Bus"),
         is_member: false,
         participant_type: "adulto",
         bus_option: "Sim",
@@ -125,7 +126,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "P5 - Sem Bus",
+        name: tag("P5 - Sem Bus"),
         is_member: false,
         participant_type: "adulto",
         bus_option: "Não",
@@ -172,7 +173,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
     // Buscar P1 para remover
     const listResp = await request.get(`/api/retreats/${retreatId}/participants`, { headers });
     const participants = await listResp.json();
-    const p1 = participants.find((p: any) => p.name === "P1 - Bus Sim Bed Sim");
+    const p1 = participants.find((p: any) => p.name === tag("P1 - Bus Sim Bed Sim"));
     expect(p1).toBeDefined();
 
     // Remover P1 (libera 1 lugar de ônibus)
@@ -182,7 +183,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
     // P4 deve ter sido promovido para Confirmado
     const listAfter = await request.get(`/api/retreats/${retreatId}/participants`, { headers });
     const afterParticipants = await listAfter.json();
-    const p4 = afterParticipants.find((p: any) => p.name === "P4 - Espera Bus");
+    const p4 = afterParticipants.find((p: any) => p.name === tag("P4 - Espera Bus"));
     expect(p4).toBeDefined();
     expect(p4.inscription_status).toBe("Confirmado");
   });
@@ -193,7 +194,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
       headers,
       data: {
         retreat_id: retreatId,
-        name: "P6 - Nova Espera",
+        name: tag("P6 - Nova Espera"),
         is_member: false,
         participant_type: "adulto",
         bus_option: "Sim",
@@ -205,7 +206,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
     // Verificar que P6 está em espera
     const listBefore = await request.get(`/api/retreats/${retreatId}/participants?inscription_status=Espera`, { headers });
     const waitingBefore = await listBefore.json();
-    const p6Before = waitingBefore.find((p: any) => p.name === "P6 - Nova Espera");
+    const p6Before = waitingBefore.find((p: any) => p.name === tag("P6 - Nova Espera"));
     expect(p6Before).toBeDefined();
 
     // Aumentar capacidade do ônibus
@@ -218,7 +219,7 @@ test.describe("Retiros - Logística (Ônibus/Camas/Fila de Espera)", () => {
     // P6 deve ter sido promovido
     const listAfter = await request.get(`/api/retreats/${retreatId}/participants`, { headers });
     const afterAll = await listAfter.json();
-    const p6After = afterAll.find((p: any) => p.name === "P6 - Nova Espera");
+    const p6After = afterAll.find((p: any) => p.name === tag("P6 - Nova Espera"));
     expect(p6After).toBeDefined();
     expect(p6After.inscription_status).toBe("Confirmado");
   });
