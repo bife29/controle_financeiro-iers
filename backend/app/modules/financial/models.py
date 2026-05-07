@@ -43,11 +43,13 @@ class Transaction(Base):
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    status = Column(String(20), default="Previsto")  # Previsto / Confirmado / Conciliado
+    status = Column(String(20), default="Previsto")  # Previsto / Confirmado
     is_recurring = Column(Boolean, default=False)
     recurring_group_id = Column(String(50), nullable=True)  # UUID para agrupar recorrentes
-    imported_from = Column(String(50), nullable=True)  # ofx / csv / manual
-    bank_origin = Column(String(100), nullable=True)  # Banco de origem (ex: Bradesco, Itaú)
+    imported_from = Column(String(50), nullable=True)  # ofx / csv / manual / recorrente
+    bank_origin = Column(String(100), nullable=True)  # Banco de origem (ex: Bradesco, Santander)
+    bank_reference = Column(String(100), nullable=True, index=True)  # FITID/ID da linha do extrato OFX
+    payment_date = Column(Date, nullable=True)  # Data efetiva da confirmação (quando saiu/entrou no caixa)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

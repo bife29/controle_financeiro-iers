@@ -1,11 +1,15 @@
+import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { ArrowLeft, Edit2, Phone, Mail, MapPin } from 'lucide-react'
+import { ArrowLeft, Edit2, Phone, Mail, MapPin, MessageCircle } from 'lucide-react'
+import { ageGroupColor, ageGroupLabel } from '@/lib/ageGroups'
+import { WhatsappShareDialog } from '@/components/WhatsappShareDialog'
 
 export function MemberDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [showShare, setShowShare] = useState(false)
 
   const { data: member, isLoading } = useQuery({
     queryKey: ['member', id],
@@ -42,18 +46,36 @@ export function MemberDetail() {
           </button>
           <div>
             <h1 className="text-2xl font-bold">{member.name}</h1>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm flex items-center gap-2">
               Ficha #{member.ficha_num || '—'}
+              {member.age_group && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${ageGroupColor(member.age_group)}`}>
+                  {ageGroupLabel(member.age_group)}
+                  {member.age != null && <span className="ml-1 opacity-70">({member.age}a)</span>}
+                </span>
+              )}
             </p>
           </div>
         </div>
-        <Link
-          to={`/membros/${id}/editar`}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition"
-        >
-          <Edit2 className="w-4 h-4" />
-          Editar
-        </Link>
+        <div className="flex items-center gap-2">
+          {member.cel && member.data_nascimento && (
+            <button
+              onClick={() => setShowShare(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition"
+              title="Parabenizar via WhatsApp"
+            >
+              <MessageCircle className="w-4 h-4" />
+              Parabenizar
+            </button>
+          )}
+          <Link
+            to={`/membros/${id}/editar`}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition"
+          >
+            <Edit2 className="w-4 h-4" />
+            Editar
+          </Link>
+        </div>
       </div>
 
       {/* Cards de contato rápido */}
@@ -134,6 +156,21 @@ export function MemberDetail() {
           <h3 className="font-semibold text-sm text-primary mb-3">Observações</h3>
           <p className="text-sm text-muted-foreground">{member.observacoes}</p>
         </div>
+      )}
+
+      {showShare && (
+        <WhatsappShareDialog
+          open
+          onClose={() => setShowShare(false)}
+          title={`Parabenizar ${member.name}`}
+          templateKind="birthday"
+          templateVars={{
+            nome: member.name,
+            idade: member.age != null ? member.age + 1 : '',
+          }}
+          individualPhone={member.cel}
+          individualName={member.name.split(' ')[0]}
+        />
       )}
     </div>
   )

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, getErrorMessage } from '@/lib/api'
 import { ArrowLeft, Save, Camera, Trash2 } from 'lucide-react'
+import { AGE_GROUPS } from '@/lib/ageGroups'
 
 interface MemberData {
   ficha_num?: number | null
@@ -35,6 +36,7 @@ interface MemberData {
   data_membresia?: string | null
   foto_perfil?: string | null
   observacoes?: string | null
+  age_group_override?: string | null
 }
 
 const initialData: MemberData = {
@@ -67,6 +69,7 @@ const initialData: MemberData = {
   data_membresia: null,
   foto_perfil: null,
   observacoes: '',
+  age_group_override: null,
 }
 
 /** Redimensiona e comprime a imagem para thumbnail (max 200x200, JPEG 70%) */
@@ -143,8 +146,8 @@ export function MemberForm() {
       queryClient.invalidateQueries({ queryKey: ['members'] })
       navigate('/membros')
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.detail || 'Erro ao salvar membro')
+    onError: (err: unknown) => {
+      setError(getErrorMessage(err, 'Erro ao salvar membro'))
     },
   })
 
@@ -539,6 +542,28 @@ export function MemberForm() {
               />
               Deseja servir em Ministério
             </label>
+          </div>
+        </fieldset>
+
+        {/* Observações */}
+        <fieldset className="bg-card border rounded-xl p-5 space-y-4">
+          <legend className="text-sm font-bold text-primary px-2">Faixa etária</legend>
+          <div>
+            <label className="block text-sm font-medium mb-1">Sobrescrever faixa etária (opcional)</label>
+            <select
+              value={form.age_group_override || ''}
+              onChange={(e) => updateField('age_group_override', e.target.value || null)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+            >
+              <option value="">— Automático (calculado pela idade) —</option>
+              {AGE_GROUPS.filter((g) => g.key !== 'indefinido').map((g) => (
+                <option key={g.key} value={g.key}>{g.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              A faixa etária é calculada automaticamente pela data de nascimento (jovens 17–24 que se casam viram adultos).
+              Use este campo apenas se quiser forçar uma faixa diferente para este membro.
+            </p>
           </div>
         </fieldset>
 

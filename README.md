@@ -6,7 +6,7 @@ Sistema multi-módulo para gestão de igrejas, com backend em **Python (FastAPI)
 
 | Módulo | Descrição |
 |--------|-----------|
-| **Financeiro** | Dashboard, transações (entrada/saída), projetos, categorias, importação OFX/CSV, auditoria |
+| **Financeiro** | Dashboard, transações (entrada/saída), projetos, categorias, importação OFX/CSV, auditoria. Status simplificado **Previsto / Confirmado** — apenas Confirmadas contam no caixa real. |
 | **Secretaria (Membros)** | Cadastro completo de membros (30+ campos), ficha numerada, busca por nome/CPF/celular |
 | **Retiros** | Gestão completa de retiros: inscrições (membros e visitantes), carnê de pagamentos parcelados, isenções, integração financeira automática e dashboard por evento |
 | **Feedback** | Sistema de sugestões, erros e melhorias com resposta administrativa |
@@ -322,9 +322,17 @@ Cada módulo suporta as seguintes ações:
 | POST | `/api/financial/categories` | Criar categoria |
 | GET | `/api/financial/projects` | Listar projetos |
 | POST | `/api/financial/projects` | Criar projeto |
-| GET | `/api/financial/transactions` | Listar transações (filtros: data, tipo, projeto) |
-| POST | `/api/financial/transactions` | Criar transação |
-| GET | `/api/financial/dashboard` | Dashboard financeiro (totais, gráficos) |
+| GET | `/api/financial/transactions` | Listar transações (filtros: data, tipo, projeto, status) |
+| POST | `/api/financial/transactions` | Criar transação (status: `Previsto` ou `Confirmado`) |
+| PUT | `/api/financial/transactions/{id}` | Atualizar transação |
+| POST | `/api/financial/transactions/{id}/confirm` | Dar baixa em um Previsto (informa `payment_date`, default hoje) |
+| DELETE | `/api/financial/transactions/{id}` | Excluir transação |
+| POST | `/api/financial/import` | Pré-visualização de extrato OFX/CSV (separa em: novas, matches com previstos, ambíguos, duplicadas) |
+| POST | `/api/financial/import/confirm` | Confirma importação (cria novas + atualiza previstos batidos) |
+| POST | `/api/financial/import/match-receivables` | Match de recebimentos contra contas a receber (valor exato, ±3 dias) |
+| GET | `/api/financial/dashboard` | Dashboard (KPIs do caixa real + previsões; param `forecast_days`, default 30) |
+
+> **Status simplificado**: apenas `Previsto` (promessa, fora do caixa) e `Confirmado` (dinheiro real). A importação OFX bate linhas do extrato contra previstos existentes (mesmo valor, ±3 dias — janela acomoda lançamentos do Santander que pulam fim de semana) e os marca como Confirmados em vez de duplicar.
 
 ### Membros
 

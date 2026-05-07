@@ -7,6 +7,9 @@ from app.modules.members.models import Member  # noqa - register model
 from app.modules.financial.models import Category, Project, Transaction, ParticipantEvent, AuditLog  # noqa
 from app.modules.feedback.models import Feedback  # noqa
 from app.modules.retreat.models import Retreat, RetreatParticipant  # noqa
+from app.modules.patrimony.models import (  # noqa
+    Asset, AssetCategory, AssetLocation, AssetMaintenance,
+)
 from sqlalchemy import select
 
 
@@ -62,6 +65,32 @@ async def seed():
 
         await session.commit()
         print("✅ Categorias iniciais criadas")
+
+        # Patrimônio: categorias e locais iniciais (idempotente)
+        pat_categorias = [
+            "Equipamento de Som",
+            "Eletro/Eletrônico",
+            "Móvel",
+            "Instrumento Musical",
+            "Iluminação",
+            "Outro",
+        ]
+        for nome in pat_categorias:
+            r = await session.execute(select(AssetCategory).where(AssetCategory.name == nome))
+            if not r.scalar_one_or_none():
+                session.add(AssetCategory(name=nome))
+
+        pat_locais = [
+            "Altar", "Som", "Ministério Infantil", "Templo",
+            "Estoque", "Cantina", "Secretaria",
+        ]
+        for nome in pat_locais:
+            r = await session.execute(select(AssetLocation).where(AssetLocation.name == nome))
+            if not r.scalar_one_or_none():
+                session.add(AssetLocation(name=nome))
+
+        await session.commit()
+        print("✅ Categorias e locais de patrimônio criados")
 
 
 if __name__ == "__main__":

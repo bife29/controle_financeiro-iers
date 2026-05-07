@@ -68,6 +68,12 @@ O módulo financeiro permite controlar todas as movimentações financeiras da i
 5. Escolha a forma de pagamento e status
 6. Clique em **Salvar**
 
+> **💡 Status — Previsto vs Confirmado**
+> - **Previsto** (amarelo): é uma promessa ou compromisso futuro (ex.: dízimo combinado, conta a pagar). **NÃO** entra no caixa real, aparece nas previsões do dashboard.
+> - **Confirmado** (verde): dinheiro que entrou ou saiu de fato. Entra no caixa real, KPIs e gráficos.
+> - Para dar baixa em um Previsto: na lista de transações, clique no botão **Confirmar** ao lado da linha — informe a data do pagamento (default: hoje).
+> - A importação de extrato OFX confirma automaticamente os Previstos que batem com o extrato (mesmo valor, ±3 dias).
+
 #### 📁 Projetos
 - **Listar** todos os projetos (Ativo, Encerrado, Cancelado)
 - **Criar** novo projeto com meta financeira
@@ -103,6 +109,14 @@ O módulo financeiro permite controlar todas as movimentações financeiras da i
 4. Clique em **Processar Arquivo**
 5. Revise as transações na tabela de pré-visualização
 6. Clique em **Confirmar Importação**
+
+> **🔍 A importação separa as linhas em 4 grupos automáticos:**
+> - **Novas**: serão criadas como Confirmadas no sistema.
+> - **Confirmam previstos**: bateram exatamente com um Previsto cadastrado (mesmo valor, ±3 dias). O Previsto vira Confirmado, sem duplicar registro.
+> - **Decisões necessárias** (ambíguas): mais de um Previsto bate com a mesma linha — você escolhe qual deve ser confirmado.
+> - **Duplicadas**: já existem no sistema (mesma referência bancária OU mesmo valor + data + descrição). Você decide ignorar ou importar mesmo assim.
+>
+> A janela de **±3 dias** acomoda lançamentos do Santander que pulam fim de semana (cobrança de sábado/domingo aparece como segunda-feira no extrato).
 
 ### Fluxo Completo do Financeiro:
 ```
@@ -215,7 +229,87 @@ Retiros
 
 ---
 
-## 💬 Módulo de Feedback
+## � Módulo Secretaria
+
+### Visão Geral
+Agenda de eventos da igreja: cultos, ensaios, reuniões, ações sociais, etc. Calendário visual mensal e cards com horários, responsáveis e observações.
+
+### Funcionalidades:
+- **Cadastro de eventos** com título, tipo, datas e horários (início/fim), local, responsável e descrição
+- **Calendário mensal** com navegação entre meses, marcando os dias com evento
+- **Listagem em lista** com filtros por mês ou tipo
+- **Compartilhamento via WhatsApp**: gera mensagem formatada com os detalhes do evento, pronta para enviar
+- **Edição/Exclusão** dos eventos cadastrados (apenas papéis com permissão)
+
+### Fluxo:
+```
+Acessar Secretaria → Adicionar Evento → Preencher dados → Salvar
+       ↓
+Visualizar no calendário ou na lista
+       ↓
+Compartilhar no WhatsApp (botão direto no card)
+```
+
+---
+
+## 📦 Módulo Patrimônio
+
+### Visão Geral
+Controle de **todos os bens físicos da igreja**: equipamentos de som, móveis, instrumentos, eletro/eletrônicos, etc. Permite cadastrar manutenções periódicas, dar baixa em itens danificados/roubados e receber alertas de garantia e revisão.
+
+### Numeração Automática
+Cada bem recebe um código no formato **`PAT-0001`**, sequencial e único. O número pode ser **editado** se você precisar manter um padrão antigo.
+
+### Status (cores)
+- 🟢 **Ativo em uso** — bem em operação normal
+- 🔵 **Ativo / Reserva** — guardado para uso eventual
+- 🟠 **Em manutenção** — saiu para conserto
+- 🔴 **Baixado / Inativo** — não faz mais parte do patrimônio
+
+### Funcionalidades:
+
+#### 🗂️ Cadastro de bens
+- Nº de controle, nome, descrição, **categoria** (editável), **local** (editável + opção *Outro*), valor de aquisição, NF, data de aquisição, garantia
+- Intervalo de manutenção em meses (o sistema calcula a próxima data automaticamente)
+- **Opcional**: marcar `Lançar saída no Financeiro` durante o cadastro — cria uma transação de Saída no projeto/categoria escolhidos
+
+#### 🛠️ Manutenção
+- **Enviar para manutenção**: registra prestador (nome, endereço, telefone, prazo informado) e move o bem para *Em manutenção*
+- **Registrar retorno**: data, custo do serviço, garantia da manutenção e status de retorno (Em uso ou Reserva)
+- O sistema **recalcula automaticamente** a próxima manutenção a partir da data de retorno
+- **Histórico completo**: cada saída/retorno fica registrado com prestador, custo e garantia
+
+#### ⬇️ Baixa
+- Botão `Dar baixa` (apenas Pastor / Admin) — escolha o motivo: **Defeito**, **Quebra**, **Roubo**, **Perda** ou **Outro** (com justificativa obrigatória)
+- O bem fica marcado como **Baixado/Inativo** e some das listas ativas
+- É possível **Reativar** um bem baixado a qualquer momento
+
+#### 🔔 Alertas no Dashboard
+- **Manutenções programadas** nos próximos 30 dias
+- **Garantias vencendo** nos próximos 30 dias
+- **Retornos atrasados** (bens em manutenção há mais tempo que o esperado)
+
+#### ⚙️ Configurações
+- `Patrimônio › Configurações`: gerencie as **Categorias** e **Locais** que aparecem nos selects (criar, renomear, inativar, excluir)
+
+### Fluxo Completo:
+```
+Cadastrar bem → Status: Ativo em uso
+       ↓
+Enviar para manutenção (registrar prestador) → Status: Em manutenção
+       ↓
+Registrar retorno (custo + garantia) → Status: Ativo em uso
+       ↓
+[Próxima manutenção recalculada automaticamente]
+       ↓
+Quando o bem quebrar/sumir → Dar baixa (motivo)
+       ↓
+Reativar (se for o caso)
+```
+
+---
+
+## �💬 Módulo de Feedback
 
 ### Visão Geral
 Canal de comunicação para sugestões, reportes de erros e melhorias.

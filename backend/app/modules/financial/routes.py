@@ -1,5 +1,6 @@
 import json
 import io
+import re
 import tempfile
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form
@@ -25,7 +26,7 @@ from .models import Category, Project, Transaction, ParticipantEvent, AuditLog
 from .schemas import (
     CategoryCreate, CategoryResponse,
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectDashboard,
-    TransactionCreate, TransactionUpdate, TransactionResponse,
+    TransactionCreate, TransactionUpdate, TransactionResponse, TransactionConfirmPayload,
     ParticipantEventCreate, ParticipantEventUpdate, ParticipantEventResponse,
     AuditLogResponse, FinancialSummary,
     BatchDeleteRequest, RecurringTransactionCreate
@@ -193,17 +194,25 @@ async def project_dashboard(
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
-    # Total Recebido (Entradas conciliadas deste projeto)
+    # Total Recebido (Entradas Confirmadas deste projeto)
     income = await db.execute(
         select(func.coalesce(func.sum(Transaction.value), 0))
-        .where(Transaction.project_id == project_id, Transaction.type == "Entrada")
+        .where(
+            Transaction.project_id == project_id,
+            Transaction.type == "Entrada",
+            Transaction.status == "Confirmado",
+        )
     )
     total_received = income.scalar()
 
-    # Total Gasto (Saídas deste projeto)
+    # Total Gasto (Saídas Confirmadas deste projeto)
     expense = await db.execute(
         select(func.coalesce(func.sum(Transaction.value), 0))
-        .where(Transaction.project_id == project_id, Transaction.type == "Saída")
+        .where(
+            Transaction.project_id == project_id,
+            Transaction.type == "Saída",
+            Transaction.status == "Confirmado",
+        )
     )
     total_spent = expense.scalar()
 
@@ -273,7 +282,13 @@ async def create_transaction(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("super_admin", "financeiro"))
 ):
-    transaction = Transaction(**data.model_dump(), created_by=current_user.id)
+    if data.status not in ("Previsto", "Confirmado"):
+        raise HTTPException(status_code=400, detail="status deve ser 'Previsto' ou 'Confirmado'")
+    payload = data.model_dump()
+    # Se já cadastrado como Confirmado e sem payment_date, usa a própria data
+    if payload["status"] == "Confirmado":
+        payload.setdefault("payment_date", payload["date"])
+    transaction = Transaction(**payload, created_by=current_user.id)
     db.add(transaction)
     await db.flush()
     await db.refresh(transaction)
@@ -287,57 +302,8 @@ async def create_transaction(
     return transaction
 
 
-@router.put("/transactions/{transaction_id}", response_model=TransactionResponse)
-async def update_transaction(
-    transaction_id: int,
-    data: TransactionUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
-):
-    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
-    transaction = result.scalar_one_or_none()
-    if not transaction:
-        raise HTTPException(status_code=404, detail="Transação não encontrada")
-
-    before = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
-
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(transaction, field, value)
-    await db.flush()
-    await db.refresh(transaction)
-
-    after = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
-    log = AuditLog(
-        action="edit", entity="Transaction", entity_id=transaction_id,
-        user_id=current_user.id,
-        before_data=json.dumps(before, default=str),
-        after_data=json.dumps(after, default=str)
-    )
-    db.add(log)
-    return transaction
-
-
-@router.delete("/transactions/{transaction_id}")
-async def delete_transaction(
-    transaction_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
-):
-    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
-    transaction = result.scalar_one_or_none()
-    if not transaction:
-        raise HTTPException(status_code=404, detail="Transação não encontrada")
-
-    before = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
-    log = AuditLog(
-        action="delete", entity="Transaction", entity_id=transaction_id,
-        user_id=current_user.id, before_data=json.dumps(before, default=str)
-    )
-    db.add(log)
-    await db.delete(transaction)
-    return {"detail": "Transação excluída"}
-
-
+# IMPORTANTE: rotas com path estático (/batch) devem vir ANTES das com path param /{id}
+# para evitar que o FastAPI capture "batch" como valor do parâmetro transaction_id (Bug 1).
 @router.delete("/transactions/batch")
 async def batch_delete_transactions(
     data: BatchDeleteRequest,
@@ -382,6 +348,91 @@ async def batch_delete_transactions(
     await db.flush()
 
     return {"detail": f"{len(found_ids)} transações excluídas", "count": len(found_ids)}
+
+
+@router.put("/transactions/{transaction_id}", response_model=TransactionResponse)
+async def update_transaction(
+    transaction_id: int,
+    data: TransactionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
+
+    before = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
+
+    payload = data.model_dump(exclude_unset=True)
+    if "status" in payload and payload["status"] not in ("Previsto", "Confirmado"):
+        raise HTTPException(status_code=400, detail="status deve ser 'Previsto' ou 'Confirmado'")
+    for field, value in payload.items():
+        setattr(transaction, field, value)
+    await db.flush()
+    await db.refresh(transaction)
+
+    after = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
+    log = AuditLog(
+        action="edit", entity="Transaction", entity_id=transaction_id,
+        user_id=current_user.id,
+        before_data=json.dumps(before, default=str),
+        after_data=json.dumps(after, default=str)
+    )
+    db.add(log)
+    return transaction
+
+
+@router.post("/transactions/{transaction_id}/confirm", response_model=TransactionResponse)
+async def confirm_transaction(
+    transaction_id: int,
+    payload: TransactionConfirmPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    """Confirma uma transação Previsto (baixa manual). Mantém o mesmo registro."""
+    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
+    if transaction.status == "Confirmado":
+        raise HTTPException(status_code=400, detail="Transação já está confirmada")
+
+    before = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
+    transaction.status = "Confirmado"
+    transaction.payment_date = payload.payment_date or date.today()
+    await db.flush()
+    await db.refresh(transaction)
+
+    after = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
+    db.add(AuditLog(
+        action="confirm", entity="Transaction", entity_id=transaction_id,
+        user_id=current_user.id,
+        before_data=json.dumps(before, default=str),
+        after_data=json.dumps(after, default=str),
+    ))
+    return transaction
+
+
+@router.delete("/transactions/{transaction_id}")
+async def delete_transaction(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro"))
+):
+    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
+
+    before = {c.name: getattr(transaction, c.name) for c in Transaction.__table__.columns}
+    log = AuditLog(
+        action="delete", entity="Transaction", entity_id=transaction_id,
+        user_id=current_user.id, before_data=json.dumps(before, default=str)
+    )
+    db.add(log)
+    await db.delete(transaction)
+    return {"detail": "Transação excluída"}
 
 
 @router.post("/transactions/recurring", response_model=list[TransactionResponse])
@@ -594,13 +645,20 @@ async def financial_dashboard(
     project_id: Optional[int] = Query(None),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    forecast_days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
 ):
-    # Filtros base
-    income_query = select(func.coalesce(func.sum(Transaction.value), 0)).where(Transaction.type == "Entrada")
-    expense_query = select(func.coalesce(func.sum(Transaction.value), 0)).where(Transaction.type == "Saída")
-    count_query = select(func.count(Transaction.id))
+    # Caixa real: somente Confirmados
+    base_confirmed = [Transaction.status == "Confirmado"]
+
+    income_query = select(func.coalesce(func.sum(Transaction.value), 0)).where(
+        Transaction.type == "Entrada", *base_confirmed
+    )
+    expense_query = select(func.coalesce(func.sum(Transaction.value), 0)).where(
+        Transaction.type == "Saída", *base_confirmed
+    )
+    count_query = select(func.count(Transaction.id)).where(*base_confirmed)
 
     if project_id:
         income_query = income_query.where(Transaction.project_id == project_id)
@@ -619,7 +677,33 @@ async def financial_dashboard(
     total_expense = (await db.execute(expense_query)).scalar()
     total_count = (await db.execute(count_query)).scalar()
 
-    # Contas a receber pendentes (participantes pendentes)
+    # Forecast: Previstos com data <= hoje + forecast_days
+    today = date.today()
+    horizon = today + timedelta(days=forecast_days)
+    forecast_filter = [
+        Transaction.status == "Previsto",
+        Transaction.date <= horizon,
+    ]
+    if project_id:
+        forecast_filter.append(Transaction.project_id == project_id)
+
+    fc_in_q = select(
+        func.coalesce(func.sum(Transaction.value), 0),
+        func.count(Transaction.id),
+    ).where(Transaction.type == "Entrada", *forecast_filter)
+    fc_out_q = select(
+        func.coalesce(func.sum(Transaction.value), 0),
+        func.count(Transaction.id),
+    ).where(Transaction.type == "Saída", *forecast_filter)
+
+    fc_in_row = (await db.execute(fc_in_q)).first()
+    fc_out_row = (await db.execute(fc_out_q)).first()
+    forecast_in = float(fc_in_row[0] or 0)
+    forecast_in_count = int(fc_in_row[1] or 0)
+    forecast_out = float(fc_out_row[0] or 0)
+    forecast_out_count = int(fc_out_row[1] or 0)
+
+    # Contas a receber pendentes (parcelas de retiro)
     receivables = await db.execute(
         select(func.coalesce(func.sum(ParticipantEvent.agreed_value - ParticipantEvent.paid_value), 0))
         .where(ParticipantEvent.status == "Pendente")
@@ -631,8 +715,12 @@ async def financial_dashboard(
         total_expense=total_expense,
         balance=total_income - total_expense,
         total_transactions=total_count,
+        forecast_in=forecast_in,
+        forecast_out=forecast_out,
+        forecast_in_count=forecast_in_count,
+        forecast_out_count=forecast_out_count,
         pending_receivables=pending_receivables,
-        pending_payables=0,  # Implementar quando contas a pagar forem adicionadas
+        pending_payables=forecast_out,
     )
 
 
@@ -655,7 +743,10 @@ async def chart_monthly(
         month_col.label('month'),
         Transaction.type,
         func.sum(Transaction.value).label('total')
-    ).where(Transaction.date >= start)
+    ).where(
+        Transaction.date >= start,
+        Transaction.status == "Confirmado",
+    )
 
     if project_id:
         query = query.where(Transaction.project_id == project_id)
@@ -695,6 +786,7 @@ async def chart_by_project(
             func.coalesce(func.sum(Transaction.value), 0).label('total')
         )
         .join(Transaction, Transaction.project_id == Project.id)
+        .where(Transaction.status == "Confirmado")
     )
 
     if start_date:
@@ -724,6 +816,7 @@ async def chart_by_category(
             func.coalesce(func.sum(Transaction.value), 0).label('total')
         )
         .join(Category, Transaction.category_id == Category.id)
+        .where(Transaction.status == "Confirmado")
     )
     if project_id:
         query = query.where(Transaction.project_id == project_id)
@@ -752,7 +845,7 @@ async def chart_by_payment_method(
         method_col.label('method'),
         func.sum(Transaction.value).label('total'),
         func.count(Transaction.id).label('count')
-    )
+    ).where(Transaction.status == "Confirmado")
     if project_id:
         query = query.where(Transaction.project_id == project_id)
     if start_date:
@@ -876,9 +969,9 @@ async def match_receivables(
         match_info = None
 
         if tx_type == "Entrada":
-            # Tentar match com parcelas pendentes
+            # Tentar match com parcelas pendentes (valor exato)
             for payment, participant, retreat in receivables:
-                if abs(payment.value - tx_value) <= 0.03:
+                if round(payment.value, 2) == round(tx_value, 2):
                     p_name = participant.name or f"Membro #{participant.member_id}"
                     match_info = {
                         "type": "receivable",
@@ -890,9 +983,9 @@ async def match_receivables(
                     break
 
         elif tx_type == "Saída":
-            # Tentar match com provisionados
+            # Tentar match com provisionados (valor exato)
             for prov in provisioned_list:
-                value_ok = abs(prov.value - tx_value) <= 0.03
+                value_ok = round(prov.value, 2) == round(tx_value, 2)
                 desc_ok = False
                 if tx_desc and prov.description:
                     prov_desc = prov.description.lower()
@@ -981,7 +1074,19 @@ async def import_transactions(
     if filename.endswith(".ofx"):
         import ofxparse
         try:
-            ofx = ofxparse.OfxParser.parse(io.BytesIO(content))
+            # Pré-processar OFX: bancos brasileiros (ex: Santander) geram
+            # FITID e CHECKNUM vazios, o que causa erro no ofxparse.
+            content_str = content.decode('latin-1', errors='replace')
+            _auto_counter = [0]
+            def _fill_empty_tag(tag_name):
+                def replacer(match):
+                    _auto_counter[0] += 1
+                    return f'<{tag_name}>AUTO{_auto_counter[0]:08d}'
+                return replacer
+            content_str = re.sub(r'<FITID>\s*(?=<)', _fill_empty_tag('FITID'), content_str)
+            content_str = re.sub(r'<CHECKNUM>\s*(?=<)', _fill_empty_tag('CHECKNUM'), content_str)
+
+            ofx = ofxparse.OfxParser.parse(io.BytesIO(content_str.encode('latin-1')))
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Erro ao parsear OFX: {str(e)}")
 
@@ -1001,12 +1106,13 @@ async def import_transactions(
                 preview.append({
                     "date": str(tx_date),
                     "type": tx_type,
-                    "value": abs(float(t.amount)),
+                    "value": round(abs(float(t.amount)), 2),
                     "description": t.memo or t.payee or "",
                     "payment_method": "Transferência Bancária",
-                    "status": "Previsto",
+                    "status": "Confirmado",
                     "imported_from": "ofx",
                     "bank_origin": detected_bank,
+                    "bank_reference": getattr(t, 'id', None) or None,
                 })
 
     elif filename.endswith(".csv"):
@@ -1028,72 +1134,153 @@ async def import_transactions(
             preview.append({
                 "date": str(row["Data"]),
                 "type": "Entrada" if valor > 0 else "Saída",
-                "value": abs(valor),
+                "value": round(abs(valor), 2),
                 "description": str(row["Descrição"]),
                 "payment_method": "Transferência Bancária",
-                "status": "Previsto",
+                "status": "Confirmado",
                 "imported_from": "csv",
                 "bank_origin": bank_origin,
+                "bank_reference": None,
             })
 
     # Aplicar filtro de tipo (Entrada ou Saída)
     if type_filter and type_filter in ("Entrada", "Saída"):
         preview = [tx for tx in preview if tx["type"] == type_filter]
 
-    # Verificar duplicidades (pular se skip_duplicates=True)
-    if skip_duplicates:
+    # ----- Match e detecção de duplicidade -----
+    # Carregar Previstos e Confirmados recentes (janela ampla para cobrir ±3 dias)
+    if not preview:
         return {
-            "preview": preview,
-            "possiveis_duplicidades": [],
-            "total_importado": len(preview),
-            "total_duplicidades": 0,
+            "preview": [], "possiveis_duplicidades": [],
+            "matches_previstos": [], "ambiguos": [],
+            "total_importado": 0, "total_duplicidades": 0,
         }
 
-    # Verificar duplicidades (transações existentes com valores/datas similares)
-    if project_id:
-        existing_result = await db.execute(
-            select(Transaction).where(Transaction.project_id == project_id)
-        )
-    else:
-        existing_result = await db.execute(
-            select(Transaction).order_by(Transaction.date.desc()).limit(500)
-        )
-    existing = existing_result.scalars().all()
+    preview_dates = [
+        (datetime.strptime(tx["date"], "%Y-%m-%d").date() if isinstance(tx["date"], str) else tx["date"])
+        for tx in preview
+    ]
+    min_d = min(preview_dates) - timedelta(days=3)
+    max_d = max(preview_dates) + timedelta(days=3)
 
-    confirmed = []
-    for tx in preview:
-        is_dup = False
-        for ex in existing:
-            try:
-                valor_ok = abs(ex.value - tx["value"]) <= 0.03
-                tx_date = datetime.strptime(tx["date"], "%Y-%m-%d").date() if isinstance(tx["date"], str) else tx["date"]
-                data_ok = abs((ex.date - tx_date).days) <= 3
-                desc_ok = (ex.description or "").strip().lower() == tx["description"].strip().lower()
-                if valor_ok and data_ok and desc_ok:
-                    is_dup = True
-                    duplicates.append({
-                        "arquivo": tx,
-                        "existente_id": ex.id,
-                        "existente": {
-                            "id": ex.id,
-                            "date": str(ex.date),
-                            "type": ex.type,
-                            "value": ex.value,
-                            "description": ex.description,
-                            "status": ex.status,
-                        }
-                    })
-                    break
-            except Exception:
+    candidate_q = select(Transaction).where(
+        Transaction.date >= min_d, Transaction.date <= max_d
+    )
+    if project_id:
+        candidate_q = candidate_q.where(Transaction.project_id == project_id)
+    candidates = (await db.execute(candidate_q)).scalars().all()
+
+    # Coletar bank_references já confirmados (deduplicacao forte)
+    confirmed_refs = {
+        c.bank_reference for c in candidates
+        if c.status == "Confirmado" and c.bank_reference
+    }
+
+    confirmed_list: list[dict] = []
+    duplicates: list[dict] = []
+    matches_previstos: list[dict] = []
+    ambiguos: list[dict] = []
+    used_previstos: set[int] = set()
+
+    for tx, tx_date in zip(preview, preview_dates):
+        # 1) Duplicidade forte por bank_reference
+        if tx.get("bank_reference") and tx["bank_reference"] in confirmed_refs:
+            ex = next(
+                (c for c in candidates
+                 if c.status == "Confirmado" and c.bank_reference == tx["bank_reference"]),
+                None,
+            )
+            if ex:
+                duplicates.append({
+                    "arquivo": tx,
+                    "existente_id": ex.id,
+                    "motivo": "bank_reference",
+                    "existente": _existing_dict(ex),
+                })
                 continue
-        if not is_dup:
-            confirmed.append(tx)
+
+        # 2) Procurar match com Previstos (valor exato, tipo igual, ±3 dias)
+        previstos_match = [
+            c for c in candidates
+            if c.status == "Previsto"
+            and c.id not in used_previstos
+            and c.type == tx["type"]
+            and round(c.value, 2) == round(tx["value"], 2)
+            and abs((c.date - tx_date).days) <= 3
+        ]
+
+        if len(previstos_match) == 1:
+            chosen = previstos_match[0]
+            used_previstos.add(chosen.id)
+            matches_previstos.append({
+                "arquivo": tx,
+                "previsto_id": chosen.id,
+                "previsto": _existing_dict(chosen),
+            })
+            continue
+
+        if len(previstos_match) > 1:
+            ambiguos.append({
+                "arquivo": tx,
+                "candidatos": [_existing_dict(c) for c in previstos_match],
+            })
+            continue
+
+        # 3) Duplicidade contra Confirmadas (valor exato, tipo igual, ±3 dias, descrição igual)
+        is_dup = False
+        for ex in candidates:
+            if ex.status != "Confirmado":
+                continue
+            if ex.type != tx["type"]:
+                continue
+            if round(ex.value, 2) != round(tx["value"], 2):
+                continue
+            if abs((ex.date - tx_date).days) > 3:
+                continue
+            ex_desc = (ex.description or "").strip().lower()
+            tx_desc = (tx["description"] or "").strip().lower()
+            if ex_desc and tx_desc and ex_desc == tx_desc:
+                duplicates.append({
+                    "arquivo": tx,
+                    "existente_id": ex.id,
+                    "motivo": "valor+data+descricao",
+                    "existente": _existing_dict(ex),
+                })
+                is_dup = True
+                break
+        if is_dup:
+            continue
+
+        # 4) Linha nova → confirmada
+        confirmed_list.append(tx)
+
+    # Se skip_duplicates, libera as duplicatas tambem
+    if skip_duplicates:
+        confirmed_list = [d["arquivo"] for d in duplicates] + confirmed_list
+        duplicates = []
 
     return {
-        "preview": confirmed,
+        "preview": confirmed_list,
         "possiveis_duplicidades": duplicates,
-        "total_importado": len(confirmed),
+        "matches_previstos": matches_previstos,
+        "ambiguos": ambiguos,
+        "total_importado": len(confirmed_list),
         "total_duplicidades": len(duplicates),
+        "total_matches_previstos": len(matches_previstos),
+        "total_ambiguos": len(ambiguos),
+    }
+
+
+def _existing_dict(tx) -> dict:
+    return {
+        "id": tx.id,
+        "date": str(tx.date),
+        "type": tx.type,
+        "value": tx.value,
+        "description": tx.description,
+        "status": tx.status,
+        "category_id": tx.category_id,
+        "project_id": tx.project_id,
     }
 
 
@@ -1104,18 +1291,69 @@ async def confirm_import(
     current_user=Depends(require_roles("super_admin", "financeiro"))
 ):
     """
-    Confirma e salva as transações importadas no banco de dados.
-    Body: { "transactions": [...], "project_id": int | null, "category_id": int | null, "member_id": int | null, "bank_origin": str | null }
-    Todos os campos globais são opcionais — podem ser definidos individualmente por transação.
+    Confirma e salva as transações importadas.
+    Body: {
+      "transactions": [...],            # novas (Confirmadas)
+      "matches_previstos": [...],       # itens com match: atualizam Previstos existentes
+      "project_id": int | null,
+      "category_id": int | null,
+      "member_id": int | null,
+      "bank_origin": str | null
+    }
     """
     transactions = payload.get("transactions", [])
+    matches_previstos = payload.get("matches_previstos", [])
     project_id = payload.get("project_id")
     global_category_id = payload.get("category_id")
     global_member_id = payload.get("member_id")
     global_bank_origin = payload.get("bank_origin")
-    if not transactions:
-        raise HTTPException(status_code=400, detail="transactions é obrigatório")
-    created = []
+
+    if not transactions and not matches_previstos:
+        raise HTTPException(status_code=400, detail="Nenhuma transação ou match informado")
+
+    created: list[Transaction] = []
+    updated: list[Transaction] = []
+
+    # 1) Atualizar Previstos com base nos matches escolhidos pelo usuário
+    for m in matches_previstos:
+        previsto_id = m.get("previsto_id")
+        tx_data = m.get("arquivo") or {}
+        if not previsto_id:
+            continue
+        prev = await db.get(Transaction, int(previsto_id))
+        if not prev or prev.status != "Previsto":
+            # Se já foi confirmado por outra rota, pula sem erro
+            continue
+        prev_before = {c.name: getattr(prev, c.name) for c in Transaction.__table__.columns}
+
+        prev.status = "Confirmado"
+        new_date = tx_data.get("date")
+        if isinstance(new_date, str):
+            try:
+                new_date = datetime.strptime(new_date, "%Y-%m-%d").date()
+            except ValueError:
+                new_date = prev.date
+        prev.payment_date = new_date or date.today()
+        if tx_data.get("bank_reference"):
+            prev.bank_reference = tx_data["bank_reference"]
+        if tx_data.get("bank_origin") or global_bank_origin:
+            prev.bank_origin = tx_data.get("bank_origin") or global_bank_origin
+        prev.imported_from = tx_data.get("imported_from", prev.imported_from)
+        await db.flush()
+        await db.refresh(prev)
+        updated.append(prev)
+
+        db.add(AuditLog(
+            action="confirm_via_import", entity="Transaction", entity_id=prev.id,
+            user_id=current_user.id,
+            before_data=json.dumps(prev_before, default=str),
+            after_data=json.dumps(
+                {c.name: getattr(prev, c.name) for c in Transaction.__table__.columns},
+                default=str,
+            ),
+        ))
+
+    # 2) Criar novas transações Confirmadas
     for tx_data in transactions:
         tx = Transaction(
             date=datetime.strptime(tx_data["date"], "%Y-%m-%d").date() if isinstance(tx_data["date"], str) else tx_data["date"],
@@ -1126,9 +1364,11 @@ async def confirm_import(
             category_id=tx_data.get("category_id") or global_category_id,
             member_id=tx_data.get("member_id") or global_member_id,
             project_id=tx_data.get("project_id") or project_id,
-            status=tx_data.get("status", "Previsto"),
+            status=tx_data.get("status", "Confirmado"),
             imported_from=tx_data.get("imported_from", "manual"),
             bank_origin=tx_data.get("bank_origin") or global_bank_origin,
+            bank_reference=tx_data.get("bank_reference"),
+            payment_date=datetime.strptime(tx_data["date"], "%Y-%m-%d").date() if isinstance(tx_data["date"], str) else tx_data["date"],
             created_by=current_user.id,
         )
         db.add(tx)
@@ -1139,7 +1379,12 @@ async def confirm_import(
         await db.refresh(tx)
 
     return {
-        "message": f"{len(created)} transações importadas com sucesso",
-        "count": len(created),
-        "transactions": [{"id": t.id, "date": str(t.date), "value": t.value, "type": t.type} for t in created],
+        "message": f"{len(created)} transações criadas, {len(updated)} previstos confirmados",
+        "count": len(created) + len(updated),
+        "created_count": len(created),
+        "updated_count": len(updated),
+        "transactions": [
+            {"id": t.id, "date": str(t.date), "value": t.value, "type": t.type, "status": t.status}
+            for t in (created + updated)
+        ],
     }

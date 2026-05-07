@@ -207,8 +207,13 @@ function SectionFinanceiro() {
             <li>• Projeto (obrigatório)</li>
             <li>• Categoria</li>
             <li>• Forma de pagamento</li>
-            <li>• Status (Previsto / Confirmado / Conciliado)</li>
+            <li>• Status (Previsto / Confirmado)</li>
           </ul>
+          <div className="bg-blue-50 border border-blue-200 rounded p-2 mt-2 text-xs text-blue-800">
+            <p><strong>Previsto</strong>: promessa/compromisso futuro — NÃO conta no caixa real, aparece nas previsões.</p>
+            <p><strong>Confirmado</strong>: dinheiro que entrou ou saiu de fato — entra no caixa real e nos relatórios.</p>
+            <p className="mt-1">Você pode dar baixa em um Previsto pelo botão "Confirmar" da listagem (informa a data do pagamento).</p>
+          </div>
         </div>
       </Accordion>
 
@@ -223,6 +228,16 @@ function SectionFinanceiro() {
         <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-2">
           <p className="text-xs font-medium text-amber-800">⚠️ Dica importante:</p>
           <p className="text-xs text-amber-700">Transações duplicadas são destacadas em amarelo na pré-visualização. Revise antes de confirmar!</p>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-2 text-xs text-blue-800">
+          <p className="font-medium">A importação separa as linhas em 4 grupos automaticamente:</p>
+          <ul className="list-disc ml-4 mt-1 space-y-0.5">
+            <li><strong>Novas</strong>: serão criadas como Confirmadas.</li>
+            <li><strong>Confirmam previstos</strong>: bateram exatamente com um Previsto (mesmo valor, ±3 dias). O Previsto vira Confirmado, sem duplicar.</li>
+            <li><strong>Decisões necessárias</strong>: mais de um Previsto bate com a mesma linha — você escolhe qual.</li>
+            <li><strong>Duplicadas</strong>: já existem no sistema — você decide ignorar ou importar mesmo assim.</li>
+          </ul>
+          <p className="mt-1">A janela de ±3 dias acomoda lançamentos do Santander que pulam fim de semana.</p>
         </div>
       </Accordion>
 

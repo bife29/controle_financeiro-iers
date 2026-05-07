@@ -1,6 +1,13 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import date, datetime
+
+
+def _empty_to_none(v):
+    """Convert empty strings to None for optional date/email fields."""
+    if isinstance(v, str) and v.strip() == "":
+        return None
+    return v
 
 
 class MemberCreate(BaseModel):
@@ -34,6 +41,21 @@ class MemberCreate(BaseModel):
     data_membresia: Optional[date] = None
     foto_perfil: Optional[str] = None
     observacoes: Optional[str] = None
+    age_group_override: Optional[str] = None
+
+    @field_validator(
+        "data_nascimento",
+        "data_casamento",
+        "data_membresia",
+        "email",
+        "cpf",
+        "identidade",
+        "age_group_override",
+        mode="before",
+    )
+    @classmethod
+    def _empty_str_to_none(cls, v):
+        return _empty_to_none(v)
 
 
 class MemberUpdate(BaseModel):
@@ -68,6 +90,21 @@ class MemberUpdate(BaseModel):
     foto_perfil: Optional[str] = None
     observacoes: Optional[str] = None
     is_active: Optional[bool] = None
+    age_group_override: Optional[str] = None
+
+    @field_validator(
+        "data_nascimento",
+        "data_casamento",
+        "data_membresia",
+        "email",
+        "cpf",
+        "identidade",
+        "age_group_override",
+        mode="before",
+    )
+    @classmethod
+    def _empty_str_to_none(cls, v):
+        return _empty_to_none(v)
 
 
 class MemberResponse(BaseModel):
@@ -103,6 +140,10 @@ class MemberResponse(BaseModel):
     foto_perfil: Optional[str] = None
     observacoes: Optional[str] = None
     is_active: bool
+    age_group_override: Optional[str] = None
+    # Campos derivados (calculados em runtime, no router)
+    age: Optional[int] = None
+    age_group: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -120,3 +161,21 @@ class MemberSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BirthdayItem(BaseModel):
+    """Aniversariante listado por mês."""
+    id: int
+    name: str
+    cel: Optional[str] = None
+    data_nascimento: date
+    day: int
+    month: int
+    age_turning: int  # idade que vai completar este ano
+    age_group: str
+
+
+class AgeGroupCount(BaseModel):
+    key: str
+    label: str
+    count: int

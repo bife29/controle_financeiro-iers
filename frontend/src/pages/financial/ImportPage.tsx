@@ -17,11 +17,13 @@ interface PreviewTransaction {
   imported_from: string
   category_id?: number | null
   bank_origin?: string | null
+  bank_reference?: string | null
 }
 
 interface DuplicateItem {
   arquivo: PreviewTransaction
   existente_id: number
+  motivo?: string
   existente: {
     id: number
     date: string
@@ -32,11 +34,33 @@ interface DuplicateItem {
   }
 }
 
+interface MatchPrevistoItem {
+  arquivo: PreviewTransaction
+  previsto_id: number
+  previsto: {
+    id: number
+    date: string
+    type: string
+    value: number
+    description: string
+    status: string
+  }
+}
+
+interface AmbiguousItem {
+  arquivo: PreviewTransaction
+  candidatos: MatchPrevistoItem['previsto'][]
+}
+
 interface ImportResult {
   preview: PreviewTransaction[]
   possiveis_duplicidades: DuplicateItem[]
+  matches_previstos: MatchPrevistoItem[]
+  ambiguos: AmbiguousItem[]
   total_importado: number
   total_duplicidades: number
+  total_matches_previstos: number
+  total_ambiguos: number
 }
 
 interface Suggestion {
@@ -94,6 +118,7 @@ export function ImportPage() {
   const [success, setSuccess] = useState('')
   const [duplicateDecisions, setDuplicateDecisions] = useState<Record<number, 'ignore' | 'import'>>({})
   const [transactionCategories, setTransactionCategories] = useState<Record<number, number | null>>({})
+  const [ambigChoices, setAmbigChoices] = useState<Record<number, number | null>>({})
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -235,21 +260,45 @@ export function ImportPage() {
     setError('')
 
     try {
-      await api.post('/api/financial/import/confirm', {
+      // Inclui matches escolhidos pelo usuário em ambiguidades
+      const ambigMatches: MatchPrevistoItem[] = []
+      if (importResult.ambiguos) {
+        importResult.ambiguos.forEach((amb, idx) => {
+          const chosen = ambigChoices[idx]
+          if (chosen) {
+            const previsto = amb.candidatos.find((c) => c.id === chosen)
+            if (previsto) {
+              ambigMatches.push({ arquivo: amb.arquivo, previsto_id: chosen, previsto })
+            }
+          }
+        })
+      }
+
+      const matches_previstos = [...(importResult.matches_previstos || []), ...ambigMatches]
+
+      const resp = await api.post('/api/financial/import/confirm', {
         transactions: toImport,
+        matches_previstos,
         project_id: projectId ? Number(projectId) : null,
         category_id: categoryId ? Number(categoryId) : null,
         member_id: memberId ? Number(memberId) : null,
         bank_origin: bankOrigin || null,
       })
 
-      setSuccess(`${toImport.length} transações importadas com sucesso!`)
+      const data = resp.data || {}
+      const total = data.count ?? toImport.length + matches_previstos.length
+      const updated = data.updated_count ?? matches_previstos.length
+      setSuccess(
+        `${total} lançamento(s) processados — ${data.created_count ?? toImport.length} novo(s)` +
+        (updated > 0 ? `, ${updated} previsto(s) confirmado(s)` : '')
+      )
       setImportResult(null)
       setSelectedFile(null)
       setSuggestions([])
       setMatches([])
       setDuplicateDecisions({})
       setTransactionCategories({})
+      setAmbigChoices({})
       if (fileInput.current) fileInput.current.value = ''
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] })
@@ -259,11 +308,6 @@ export function ImportPage() {
       setConfirming(false)
     }
   }
-
-  const totalValue = importResult?.preview.reduce(
-    (acc, t) => acc + (t.type === 'Entrada' ? t.value : -t.value),
-    0
-  ) || 0
 
   const extraFromDuplicates = Object.values(duplicateDecisions).filter((d) => d === 'import').length
 
@@ -423,15 +467,13 @@ export function ImportPage() {
                 <p className="text-xs text-green-600 font-medium">Novas</p>
                 <p className="text-lg font-bold text-green-800">{importResult.total_importado}</p>
               </div>
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-blue-600 font-medium">Confirmam previstos</p>
+                <p className="text-lg font-bold text-blue-800">{importResult.total_matches_previstos || 0}</p>
+              </div>
               <div className="bg-amber-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-amber-600 font-medium">Duplicadas</p>
                 <p className="text-lg font-bold text-amber-800">{importResult.total_duplicidades}</p>
-              </div>
-              <div className="bg-blue-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-blue-600 font-medium">Valor Líquido</p>
-                <p className={`text-lg font-bold ${totalValue >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                  {fmt(totalValue)}
-                </p>
               </div>
               <div className="bg-purple-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-purple-600 font-medium">Categorizadas (IA)</p>
@@ -529,8 +571,7 @@ export function ImportPage() {
           </div>
 
           {/* Side-by-side Duplicatas */}
-          {importResult.possiveis_duplicidades.length > 0 && (
-            <div className="bg-card border rounded-xl p-6">
+          {importResult.possiveis_duplicidades.length > 0 && (            <div className="bg-card border rounded-xl p-6">
               <h2 className="font-semibold text-lg mb-4 flex items-center gap-2">
                 <ArrowLeftRight className="w-5 h-5 text-amber-600" />
                 3. Análise de Duplicidades ({importResult.possiveis_duplicidades.length})
@@ -605,6 +646,70 @@ export function ImportPage() {
             </div>
           )}
 
+          {/* Matches automáticos com Previstos */}
+          {importResult.matches_previstos && importResult.matches_previstos.length > 0 && (
+            <div className="bg-card border rounded-xl p-6">
+              <h2 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                <Link2 className="w-5 h-5 text-blue-600" />
+                Confirmações automáticas de Previstos ({importResult.matches_previstos.length})
+              </h2>
+              <p className="text-sm text-muted-foreground mb-3">
+                Estes lançamentos do extrato bateram exatamente com previstos já cadastrados (mesmo valor, ±3 dias).
+                Ao confirmar a importação, o previsto vira <strong>Confirmado</strong> sem criar registro novo.
+              </p>
+              <ul className="divide-y text-sm">
+                {importResult.matches_previstos.map((m, i) => (
+                  <li key={i} className="py-2 flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{m.arquivo.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Extrato {fmtDate(m.arquivo.date)} → Previsto #{m.previsto_id} ({fmtDate(m.previsto.date)})
+                      </p>
+                    </div>
+                    <span className={`text-sm font-medium whitespace-nowrap ${m.arquivo.type === 'Entrada' ? 'text-green-700' : 'text-red-700'}`}>
+                      {fmt(m.arquivo.value)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Ambiguidades — usuário escolhe qual previsto confirmar */}
+          {importResult.ambiguos && importResult.ambiguos.length > 0 && (
+            <div className="bg-card border rounded-xl p-6">
+              <h2 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                Decisões necessárias ({importResult.ambiguos.length})
+              </h2>
+              <p className="text-sm text-muted-foreground mb-3">
+                Mais de um previsto bate com a mesma linha do extrato. Escolha qual deve ser confirmado, ou deixe em branco para criar como novo lançamento.
+              </p>
+              <div className="space-y-3">
+                {importResult.ambiguos.map((amb, idx) => (
+                  <div key={idx} className="border rounded-lg p-3">
+                    <p className="text-sm font-medium">{amb.arquivo.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Extrato: {fmtDate(amb.arquivo.date)} • <span className={amb.arquivo.type === 'Entrada' ? 'text-green-700' : 'text-red-700'}>{fmt(amb.arquivo.value)}</span>
+                    </p>
+                    <select
+                      value={ambigChoices[idx] ?? ''}
+                      onChange={(e) => setAmbigChoices((p) => ({ ...p, [idx]: e.target.value ? Number(e.target.value) : null }))}
+                      className="mt-2 w-full text-xs border rounded px-2 py-1"
+                    >
+                      <option value="">Criar como novo lançamento (não confirmar previsto)</option>
+                      {amb.candidatos.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          Confirmar Previsto #{c.id} — {fmtDate(c.date)} — {c.description || '(sem descrição)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Confirmação */}
           {(importResult.preview.length > 0 || extraFromDuplicates > 0) && (
             <div className="flex items-center justify-between bg-card border rounded-xl p-4">
@@ -612,8 +717,7 @@ export function ImportPage() {
                 Total a importar: <strong>{importResult.preview.length + extraFromDuplicates}</strong> transação(ões)
                 {extraFromDuplicates > 0 && (
                   <span className="text-blue-600 ml-1">(+{extraFromDuplicates} de duplicatas aprovadas)</span>
-                )}
-              </div>
+                )}              </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => {

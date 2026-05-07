@@ -5,7 +5,9 @@ import { MainLayout } from '@/layouts/MainLayout'
 import { DashboardPage } from '@/pages/Dashboard'
 import { FinancialPage } from '@/pages/financial'
 import { MembersPage } from '@/pages/members'
+import { SecretariaPage } from '@/pages/secretaria'
 import { RetreatsPage } from '@/pages/retreats'
+import { PatrimonyPage } from '@/pages/patrimony'
 import { FeedbackPage } from '@/pages/Feedback'
 import { UsersPage } from '@/pages/users'
 import { ManualPage } from '@/pages/Manual'
@@ -31,7 +33,9 @@ export default function App() {
         <Route index element={<DashboardPage />} />
         <Route path="financeiro/*" element={<FinancialPage />} />
         <Route path="membros/*" element={<MembersPage />} />
+        <Route path="secretaria/*" element={<SecretariaPage />} />
         <Route path="retiros/*" element={<RetreatsPage />} />
+        <Route path="patrimonio/*" element={<PatrimonyPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
         <Route path="usuarios/*" element={<UsersPage />} />
         <Route path="manual" element={<ManualPage />} />

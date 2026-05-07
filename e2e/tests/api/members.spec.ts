@@ -171,4 +171,79 @@ test.describe("Módulo Membros", () => {
     const response = await request.get("/api/members/");
     expect(response.status()).toBe(401);
   });
+
+  // Regressão Bug 2: criar membro com CPF duplicado retornava 500
+  // (IntegrityError não tratado). Deve responder 409 com mensagem amigável.
+  test("POST /api/members/ com CPF duplicado retorna 409", async ({ request }) => {
+    const ts = Date.now();
+    const cpf = `${String(ts).slice(-3)}.${String(ts).slice(-6, -3)}.${String(ts).slice(-9, -6)}-99`;
+    const base = {
+      name: `Dup CPF E2E ${ts}`,
+      cpf,
+    };
+
+    const first = await request.post("/api/members/", { headers, data: base });
+    expect(first.ok()).toBeTruthy();
+
+    const second = await request.post("/api/members/", {
+      headers,
+      data: { ...base, name: `${base.name} (clone)` },
+    });
+    expect(second.status()).toBe(409);
+    const body = await second.json();
+    expect(typeof body.detail).toBe("string");
+    expect(body.detail.toLowerCase()).toContain("cpf");
+  });
+
+  // Regressão Bug 2: criar membro com ficha_num duplicado também devolvia 500.
+  test("POST /api/members/ com ficha_num duplicado retorna 409", async ({ request }) => {
+    const ts = Date.now();
+    // Pega o maior ficha existente para evitar colisão acidental
+    const list = await request.get("/api/members/?limit=200", { headers });
+    const members = await list.json();
+    const maxFicha = members.reduce(
+      (m: number, x: any) => (x.ficha_num && x.ficha_num > m ? x.ficha_num : m),
+      0
+    );
+    const ficha = maxFicha + 5000 + (ts % 1000);
+
+    const first = await request.post("/api/members/", {
+      headers,
+      data: { name: `Dup Ficha E2E ${ts}`, ficha_num: ficha },
+    });
+    expect(first.ok()).toBeTruthy();
+
+    const second = await request.post("/api/members/", {
+      headers,
+      data: { name: `Dup Ficha 2 E2E ${ts}`, ficha_num: ficha },
+    });
+    expect(second.status()).toBe(409);
+    const body = await second.json();
+    expect(typeof body.detail).toBe("string");
+  });
+
+  // Regressão Bug 2: frontend enviava string vazia para data_nascimento,
+  // causando 422 ("input is too short"). Schema deve coerce "" -> None.
+  test("POST /api/members/ aceita strings vazias em datas opcionais", async ({ request }) => {
+    const ts = Date.now();
+    const resp = await request.post("/api/members/", {
+      headers,
+      data: {
+        name: `Empty Dates E2E ${ts}`,
+        data_nascimento: "",
+        data_casamento: "",
+        data_membresia: "",
+        email: "",
+        cpf: "",
+      },
+    });
+
+    expect(resp.status()).toBe(200);
+    const created = await resp.json();
+    expect(created.data_nascimento).toBeNull();
+    expect(created.data_casamento).toBeNull();
+    expect(created.data_membresia).toBeNull();
+    expect(created.email).toBeNull();
+    expect(created.cpf).toBeNull();
+  });
 });

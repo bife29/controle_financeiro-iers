@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, getErrorMessage } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Save, Repeat } from 'lucide-react'
@@ -102,8 +102,8 @@ export function TransactionForm() {
         ? api.post('/api/financial/transactions/recurring', data)
         : api.post('/api/financial/transactions', data),
     onSuccess: () => navigate('/financeiro/transacoes'),
-    onError: (err: any) => {
-      setError(err.response?.data?.detail || 'Erro ao salvar transação')
+    onError: (err: unknown) => {
+      setError(getErrorMessage(err, 'Erro ao salvar transação'))
     },
   })
 
@@ -290,9 +290,8 @@ export function TransactionForm() {
               onChange={(e) => setForm({ ...form, status: e.target.value })}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
             >
-              <option value="Previsto">Previsto</option>
-              <option value="Confirmado">Confirmado</option>
-              <option value="Conciliado">Conciliado</option>
+              <option value="Previsto">Previsto (promessa, não entra no caixa)</option>
+              <option value="Confirmado">Confirmado (já entrou/saiu do caixa)</option>
             </select>
           </div>
         </div>

@@ -53,6 +53,10 @@ class Member(Base):
     foto_perfil = Column(Text, nullable=True)  # Base64 data URI (thumbnail ~10-20KB)
     observacoes = Column(String(1000), nullable=True)
 
+    # Override manual da faixa etária (se preenchido, sobrescreve o cálculo automático).
+    # Valores válidos: criancas, pre_adolescentes, adolescentes, jovens, adultos, indefinido.
+    age_group_override = Column(String(30), nullable=True)
+
     # Controle
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

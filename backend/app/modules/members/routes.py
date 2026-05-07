@@ -1,14 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, extract
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
+from datetime import date
 from pydantic import BaseModel
 from ...core.database import get_db
 from ...core.security import get_current_user, require_roles
 from .models import Member
-from .schemas import MemberCreate, MemberUpdate, MemberResponse, MemberSummary
+from .schemas import (
+    MemberCreate, MemberUpdate, MemberResponse, MemberSummary,
+    BirthdayItem, AgeGroupCount,
+)
+from .utils import (
+    AGE_GROUPS, AGE_GROUP_KEYS,
+    calc_age, compute_age_group, effective_age_group,
+)
 
 router = APIRouter(prefix="/api/members", tags=["Membros"])
+
+
+def _integrity_message(exc: IntegrityError) -> str:
+    """Translate DB integrity error into a friendly message."""
+    raw = str(exc.orig if exc.orig else exc).lower()
+    if "cpf" in raw:
+        return "Já existe um membro cadastrado com este CPF."
+    if "ficha_num" in raw or "ficha" in raw:
+        return "Já existe um membro com este número de ficha."
+    if "email" in raw:
+        return "Já existe um membro com este e-mail."
+    return "Violação de unicidade: registro duplicado."
 
 
 class PhotoUpload(BaseModel):
@@ -19,15 +40,36 @@ class BulkDeleteRequest(BaseModel):
     ids: List[int]
 
 
+def _enrich(member: Member) -> Member:
+    """Anexa atributos derivados (age, age_group) ao objeto antes de serializar.
+    Pydantic com from_attributes lê esses atributos diretamente."""
+    setattr(member, "age", calc_age(member.data_nascimento))
+    setattr(member, "age_group", effective_age_group(member))
+    return member
+
+
+def _validate_age_group_key(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if value not in AGE_GROUP_KEYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"age_group inválido. Válidos: {', '.join(AGE_GROUP_KEYS)}",
+        )
+    return value
+
+
 @router.get("/", response_model=list[MemberResponse])
 async def list_members(
     search: Optional[str] = Query(None),
     active_only: bool = Query(True),
+    age_group: Optional[str] = Query(None, description="Filtra por faixa: criancas, pre_adolescentes, adolescentes, jovens, adultos, indefinido"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+    age_group = _validate_age_group_key(age_group)
     query = select(Member)
     if active_only:
         query = query.where(Member.is_active == True)
@@ -39,9 +81,14 @@ async def list_members(
                 Member.cel.ilike(f"%{search}%"),
             )
         )
-    query = query.order_by(Member.name).offset(skip).limit(limit)
+    query = query.order_by(Member.name)
     result = await db.execute(query)
-    return result.scalars().all()
+    members = list(result.scalars().all())
+    if age_group:
+        members = [m for m in members if effective_age_group(m) == age_group]
+    # paginate após filtrar por age_group (filtro é calculado em runtime)
+    members = members[skip : skip + limit]
+    return [_enrich(m) for m in members]
 
 
 @router.get("/summary", response_model=list[MemberSummary])
@@ -68,6 +115,98 @@ async def count_members(
     return {"count": result.scalar()}
 
 
+@router.get("/birthdays", response_model=list[BirthdayItem])
+async def list_birthdays(
+    month: Optional[int] = Query(None, ge=1, le=12, description="Mês (1-12). Padrão: mês corrente"),
+    year: Optional[int] = Query(None, description="Ano de referência para idade. Padrão: ano corrente"),
+    upcoming_days: Optional[int] = Query(
+        None, ge=1, le=366,
+        description="Se informado, ignora 'month' e retorna aniversariantes nos próximos N dias",
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Aniversariantes do mês (ou janela de N dias). Ordenados por dia.
+
+    Considera apenas membros ativos com data_nascimento preenchida.
+    """
+    today = date.today()
+    ref_year = year or today.year
+
+    # Carrega só membros ativos com data_nascimento (filtramos em Python pra
+    # ter compatibilidade SQLite/Postgres sem usar EXTRACT condicional).
+    q = select(Member).where(
+        Member.is_active == True,  # noqa: E712
+        Member.data_nascimento.isnot(None),
+    )
+    rows = (await db.execute(q)).scalars().all()
+
+    items: list[BirthdayItem] = []
+    if upcoming_days:
+        # próximos N dias (incluindo hoje)
+        for m in rows:
+            assert m.data_nascimento is not None
+            this_year_bday = date(today.year, m.data_nascimento.month, _safe_day(m.data_nascimento))
+            if this_year_bday < today:
+                this_year_bday = date(today.year + 1, m.data_nascimento.month, _safe_day(m.data_nascimento))
+            delta = (this_year_bday - today).days
+            if 0 <= delta <= upcoming_days:
+                items.append(_birthday_item(m, this_year_bday.year))
+        items.sort(key=lambda b: (b.month, b.day, b.name))
+    else:
+        target_month = month or today.month
+        for m in rows:
+            assert m.data_nascimento is not None
+            if m.data_nascimento.month == target_month:
+                items.append(_birthday_item(m, ref_year))
+        items.sort(key=lambda b: (b.day, b.name))
+
+    return items
+
+
+@router.get("/age-groups", response_model=list[AgeGroupCount])
+async def get_age_groups_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Quantidade de membros ativos por faixa etária."""
+    rows = (await db.execute(
+        select(Member).where(Member.is_active == True)  # noqa: E712
+    )).scalars().all()
+    counts: dict[str, int] = {g["key"]: 0 for g in AGE_GROUPS}
+    for m in rows:
+        counts[effective_age_group(m)] = counts.get(effective_age_group(m), 0) + 1
+    return [
+        AgeGroupCount(key=g["key"], label=g["label"], count=counts.get(g["key"], 0))
+        for g in AGE_GROUPS
+    ]
+
+
+def _safe_day(birth: date) -> int:
+    """Trata 29/fev em ano não-bissexto: usa 28."""
+    from calendar import isleap
+    if birth.month == 2 and birth.day == 29 and not isleap(date.today().year):
+        return 28
+    return birth.day
+
+
+def _birthday_item(m: Member, ref_year: int) -> BirthdayItem:
+    bday = m.data_nascimento
+    assert bday is not None
+    age_turning = ref_year - bday.year
+    name = m.name or ""
+    return BirthdayItem(
+        id=m.id,
+        name=name,
+        cel=m.cel,
+        data_nascimento=bday,
+        day=bday.day,
+        month=bday.month,
+        age_turning=max(0, age_turning),
+        age_group=effective_age_group(m),
+    )
+
+
 @router.get("/by-ficha/{ficha_num}", response_model=MemberResponse)
 async def get_member_by_ficha(
     ficha_num: int,
@@ -78,7 +217,7 @@ async def get_member_by_ficha(
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Membro não encontrado")
-    return member
+    return _enrich(member)
 
 
 @router.get("/{member_id}", response_model=MemberResponse)
@@ -91,7 +230,7 @@ async def get_member(
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Membro não encontrado")
-    return member
+    return _enrich(member)
 
 
 @router.post("/", response_model=MemberResponse)
@@ -109,11 +248,17 @@ async def create_member(
     else:
         data_dict = data.model_dump(exclude_unset=True)
 
+    _validate_age_group_key(data_dict.get("age_group_override"))
+
     member = Member(**data_dict)
     db.add(member)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=_integrity_message(exc))
     await db.refresh(member)
-    return member
+    return _enrich(member)
 
 
 @router.put("/{member_id}", response_model=MemberResponse)
@@ -128,12 +273,18 @@ async def update_member(
     if not member:
         raise HTTPException(status_code=404, detail="Membro não encontrado")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    _validate_age_group_key(payload.get("age_group_override"))
+    for field, value in payload.items():
         setattr(member, field, value)
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=_integrity_message(exc))
     await db.refresh(member)
-    return member
+    return _enrich(member)
 
 
 @router.delete("/{member_id}")

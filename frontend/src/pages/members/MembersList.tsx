@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, Plus, Edit2, Eye, UserCheck, UserX, Trash2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { AGE_GROUPS, ageGroupColor, ageGroupLabel } from '@/lib/ageGroups'
 
 interface Member {
   id: number
@@ -17,10 +18,13 @@ interface Member {
   foto_perfil: string | null
   is_active: boolean
   batizado_aguas: boolean | null
+  age?: number | null
+  age_group?: string | null
 }
 
 export function MembersList() {
   const [search, setSearch] = useState('')
+  const [ageGroupFilter, setAgeGroupFilter] = useState<string>('')
   const [showInactive, setShowInactive] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null)
@@ -30,10 +34,14 @@ export function MembersList() {
   const canDelete = hasRole('super_admin', 'pastor')
 
   const { data: members = [], isLoading } = useQuery<Member[]>({
-    queryKey: ['members', search, showInactive],
+    queryKey: ['members', search, showInactive, ageGroupFilter],
     queryFn: () =>
       api.get('/api/members/', {
-        params: { search: search || undefined, active_only: !showInactive }
+        params: {
+          search: search || undefined,
+          active_only: !showInactive,
+          age_group: ageGroupFilter || undefined,
+        }
       }).then((r) => r.data),
   })
 
@@ -98,6 +106,16 @@ export function MembersList() {
             className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition"
           />
         </div>
+        <select
+          value={ageGroupFilter}
+          onChange={(e) => setAgeGroupFilter(e.target.value)}
+          className="px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-primary"
+        >
+          <option value="">Todas as faixas etárias</option>
+          {AGE_GROUPS.map((g) => (
+            <option key={g.key} value={g.key}>{g.label}</option>
+          ))}
+        </select>
         <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
           <input
             type="checkbox"
@@ -207,6 +225,7 @@ export function MembersList() {
                 <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">CPF</th>
                 <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Celular</th>
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Cidade</th>
+                <th className="text-left px-4 py-3 font-medium hidden xl:table-cell">Faixa etária</th>
                 <th className="text-center px-4 py-3 font-medium hidden md:table-cell">Batizado</th>
                 <th className="text-center px-4 py-3 font-medium">Status</th>
                 <th className="text-center px-4 py-3 font-medium w-28">Ações</th>
@@ -215,13 +234,13 @@ export function MembersList() {
             <tbody className="divide-y">
               {isLoading ? (
                 <tr>
-                  <td colSpan={canDelete ? 10 : 9} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={canDelete ? 11 : 10} className="px-4 py-8 text-center text-muted-foreground">
                     Carregando...
                   </td>
                 </tr>
               ) : members.length === 0 ? (
                 <tr>
-                  <td colSpan={canDelete ? 10 : 9} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={canDelete ? 11 : 10} className="px-4 py-8 text-center text-muted-foreground">
                     Nenhum membro encontrado
                   </td>
                 </tr>
@@ -264,6 +283,16 @@ export function MembersList() {
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-muted-foreground">
                       {member.cidade || '—'}
+                    </td>
+                    <td className="px-4 py-3 hidden xl:table-cell">
+                      {member.age_group ? (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${ageGroupColor(member.age_group)}`}>
+                          {ageGroupLabel(member.age_group)}
+                          {member.age != null && <span className="ml-1 opacity-70">({member.age}a)</span>}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-center">
                       {member.batizado_aguas ? (

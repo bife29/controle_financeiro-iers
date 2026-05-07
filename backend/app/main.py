@@ -9,6 +9,12 @@ from .modules.members.models import Member  # noqa
 from .modules.financial.models import Category, Project, Transaction, ParticipantEvent, AuditLog  # noqa
 from .modules.feedback.models import Feedback  # noqa
 from .modules.retreat.models import Retreat, RetreatParticipant, RetreatPayment  # noqa
+from .modules.secretaria.models import (  # noqa
+    Event, WhatsappGroup, MessageTemplate, ChurchSettings,
+)
+from .modules.patrimony.models import (  # noqa
+    Asset, AssetCategory, AssetLocation, AssetMaintenance,
+)
 
 # Import routers
 from .modules.auth.routes import router as auth_router
@@ -16,6 +22,8 @@ from .modules.members.routes import router as members_router
 from .modules.financial.routes import router as financial_router
 from .modules.feedback.routes import router as feedback_router
 from .modules.retreat.routes import router as retreat_router
+from .modules.secretaria.routes import router as secretaria_router
+from .modules.patrimony.routes import router as patrimony_router
 
 
 def create_app() -> FastAPI:
@@ -43,6 +51,8 @@ def create_app() -> FastAPI:
     app.include_router(financial_router)
     app.include_router(feedback_router)
     app.include_router(retreat_router)
+    app.include_router(secretaria_router)
+    app.include_router(patrimony_router)
 
     @app.on_event("startup")
     async def startup():
@@ -83,14 +93,95 @@ async def _apply_migrations(conn):
             await conn.execute(text(
                 "ALTER TABLE transactions ADD COLUMN bank_origin VARCHAR(100)"
             ))
-        # Make project_id nullable (PostgreSQL syntax differs from SQLite)
-        # SQLite doesn't support ALTER COLUMN, but new tables will use the new schema
+        if "bank_reference" not in columns:
+            await conn.execute(text(
+                "ALTER TABLE transactions ADD COLUMN bank_reference VARCHAR(100)"
+            ))
+            try:
+                await conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_transactions_bank_reference "
+                    "ON transactions (bank_reference)"
+                ))
+            except Exception:
+                pass
+        if "payment_date" not in columns:
+            await conn.execute(text(
+                "ALTER TABLE transactions ADD COLUMN payment_date DATE"
+            ))
+        # Renomear status legado 'Conciliado' -> 'Confirmado' (consolidacao em 2 status)
         try:
             await conn.execute(text(
-                "ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL"
+                "UPDATE transactions SET status='Confirmado' WHERE status='Conciliado'"
             ))
         except Exception:
-            pass  # SQLite or already nullable
+            pass
+        # Make project_id nullable. PostgreSQL supports ALTER COLUMN; SQLite
+        # does not, so we use the table-rebuild dance (CREATE temp + COPY + DROP + RENAME).
+        dialect_name = conn.dialect.name
+        if dialect_name == "postgresql":
+            try:
+                await conn.execute(text(
+                    "ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL"
+                ))
+            except Exception:
+                pass  # already nullable
+        elif dialect_name == "sqlite":
+            # Check current notnull state via PRAGMA
+            def _project_id_notnull(connection):
+                rows = connection.exec_driver_sql("PRAGMA table_info(transactions)").fetchall()
+                for r in rows:
+                    # (cid, name, type, notnull, default, pk)
+                    if r[1] == "project_id":
+                        return bool(r[3])
+                return False
+
+            needs_rebuild = await conn.run_sync(_project_id_notnull)
+            if needs_rebuild:
+                # Recreate transactions with project_id NULL allowed
+                await conn.execute(text("PRAGMA foreign_keys=OFF"))
+                await conn.execute(text("""
+                    CREATE TABLE transactions__new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        date DATE NOT NULL,
+                        type VARCHAR(20) NOT NULL,
+                        value FLOAT NOT NULL,
+                        description TEXT,
+                        payment_method VARCHAR(50),
+                        category_id INTEGER,
+                        member_id INTEGER,
+                        project_id INTEGER,
+                        status VARCHAR(20),
+                        imported_from VARCHAR(50),
+                        created_by INTEGER,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME,
+                        is_recurring BOOLEAN DEFAULT FALSE,
+                        recurring_group_id VARCHAR(50),
+                        bank_origin VARCHAR(100)
+                    )
+                """))
+                await conn.execute(text("""
+                    INSERT INTO transactions__new
+                        (id, date, type, value, description, payment_method,
+                         category_id, member_id, project_id, status, imported_from,
+                         created_by, created_at, updated_at, is_recurring,
+                         recurring_group_id, bank_origin)
+                    SELECT id, date, type, value, description, payment_method,
+                           category_id, member_id, project_id, status, imported_from,
+                           created_by, created_at, updated_at, is_recurring,
+                           recurring_group_id, bank_origin
+                    FROM transactions
+                """))
+                await conn.execute(text("DROP TABLE transactions"))
+                await conn.execute(text("ALTER TABLE transactions__new RENAME TO transactions"))
+                await conn.execute(text("PRAGMA foreign_keys=ON"))
+
+    # Members: coluna age_group_override (override manual da faixa etária)
+    member_cols = await conn.run_sync(lambda c: _get_columns(c, "members"))
+    if member_cols and "age_group_override" not in member_cols:
+        await conn.execute(text(
+            "ALTER TABLE members ADD COLUMN age_group_override VARCHAR(30)"
+        ))
 
 
 app = create_app()

@@ -87,6 +87,7 @@ class TransactionUpdate(BaseModel):
     project_id: Optional[int] = None
     status: Optional[str] = None
     bank_origin: Optional[str] = None
+    payment_date: Optional[date] = None
 
 
 class TransactionResponse(BaseModel):
@@ -104,10 +105,16 @@ class TransactionResponse(BaseModel):
     is_recurring: bool = False
     recurring_group_id: Optional[str] = None
     bank_origin: Optional[str] = None
+    bank_reference: Optional[str] = None
+    payment_date: Optional[date] = None
     created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class TransactionConfirmPayload(BaseModel):
+    payment_date: Optional[date] = None  # default: hoje
 
 
 # --- Batch Operations ---
@@ -173,9 +180,13 @@ class AuditLogResponse(BaseModel):
 
 # --- Dashboard ---
 class FinancialSummary(BaseModel):
-    total_income: float
-    total_expense: float
-    balance: float
-    total_transactions: int
+    total_income: float          # Confirmadas (caixa real)
+    total_expense: float         # Confirmadas (caixa real)
+    balance: float               # Saldo de caixa real
+    total_transactions: int      # Total de Confirmadas
+    forecast_in: float = 0       # Soma de Previstos (Entrada) até hoje + N dias
+    forecast_out: float = 0      # Soma de Previstos (Saída) até hoje + N dias
+    forecast_in_count: int = 0
+    forecast_out_count: int = 0
     pending_receivables: float
     pending_payables: float

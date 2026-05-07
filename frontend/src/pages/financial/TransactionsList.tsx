@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download } from 'lucide-react'
+import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download, CheckCircle2 } from 'lucide-react'
 
 interface Transaction {
   id: number
@@ -65,6 +65,15 @@ export function TransactionsList() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       setSelected(new Set())
       setBatchDeleteConfirm(false)
+    },
+  })
+
+  const confirmTx = useMutation({
+    mutationFn: (id: number) =>
+      api.post(`/api/financial/transactions/${id}/confirm`, { payment_date: new Date().toISOString().slice(0, 10) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] })
     },
   })
 
@@ -200,7 +209,6 @@ export function TransactionsList() {
           <option value="">Todos os status</option>
           <option value="Previsto">Previsto</option>
           <option value="Confirmado">Confirmado</option>
-          <option value="Conciliado">Conciliado</option>
         </select>
       </div>
 
@@ -278,10 +286,8 @@ export function TransactionsList() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        t.status === 'Conciliado'
+                        t.status === 'Confirmado'
                           ? 'bg-green-100 text-green-800'
-                          : t.status === 'Confirmado'
-                          ? 'bg-blue-100 text-blue-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}>
                         {t.status}
@@ -289,6 +295,16 @@ export function TransactionsList() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-center gap-1">
+                        {t.status === 'Previsto' && (
+                          <button
+                            onClick={() => confirmTx.mutate(t.id)}
+                            disabled={confirmTx.isPending}
+                            className="p-1.5 text-muted-foreground hover:text-green-600 rounded"
+                            title="Confirmar (marcar como pago/recebido)"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                          </button>
+                        )}
                         <Link
                           to={`/financeiro/transacoes/${t.id}/editar`}
                           className="p-1.5 text-muted-foreground hover:text-blue-600 rounded"

@@ -1,11 +1,29 @@
+import re
 import ofxparse
 import pandas as pd
 from typing import List
 from ..domain.entities import Transaction
 
 class ImportService:
+    @staticmethod
+    def _preprocess_ofx(content: str) -> str:
+        """Preenche FITID/CHECKNUM vazios (comum em bancos BR como Santander)."""
+        counter = [0]
+        def _fill(tag_name):
+            def replacer(match):
+                counter[0] += 1
+                return f'<{tag_name}>AUTO{counter[0]:08d}'
+            return replacer
+        content = re.sub(r'<FITID>\s*(?=<)', _fill('FITID'), content)
+        content = re.sub(r'<CHECKNUM>\s*(?=<)', _fill('CHECKNUM'), content)
+        return content
+
     def import_ofx(self, file_path: str, period_id: int, project_id: int = 0) -> List[Transaction]:
-        ofx = ofxparse.OfxParser.parse(open(file_path, 'r'))
+        with open(file_path, 'rb') as f:
+            raw = f.read()
+        content = self._preprocess_ofx(raw.decode('latin-1', errors='replace'))
+        import io
+        ofx = ofxparse.OfxParser.parse(io.BytesIO(content.encode('latin-1')))
         transactions = []
         for t in ofx.account.statement.transactions:
             transactions.append(Transaction(
