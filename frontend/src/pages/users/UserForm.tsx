@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Shield, Eye, Plus as PlusIcon, Edit3, Trash2, Check } from 'lucide-react'
+import { ArrowLeft, Save, Shield, Eye, Plus as PlusIcon, Edit3, Trash2, Check, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ModuleConfig {
@@ -57,6 +57,7 @@ export function UserForm() {
   })
   const [useCustomPermissions, setUseCustomPermissions] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [successMsg, setSuccessMsg] = useState('')
 
   // Fetch permission defaults and module config
   const { data: permConfig } = useQuery<PermDefaults>({
@@ -116,13 +117,12 @@ export function UserForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      navigate('/usuarios')
+      setSuccessMsg(isEditing ? 'Usu\u00e1rio atualizado com sucesso!' : 'Usu\u00e1rio criado com sucesso!')
+      setTimeout(() => navigate('/usuarios'), 1500)
     },
     onError: (err: any) => {
       const detail = err.response?.data?.detail
-      if (detail) {
-        setErrors({ form: detail })
-      }
+      setErrors({ form: detail || 'Erro ao salvar usu\u00e1rio. Verifique os dados e tente novamente.' })
     },
   })
 
@@ -139,11 +139,13 @@ export function UserForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setSuccessMsg('')
     if (!validate()) return
     saveMutation.mutate(form)
   }
 
   const togglePermission = (moduleKey: string, action: string) => {
+    if (!useCustomPermissions) setUseCustomPermissions(true)
     setForm((prev) => {
       const currentActions = prev.permissions[moduleKey] || []
       const hasAction = currentActions.includes(action)
@@ -174,6 +176,7 @@ export function UserForm() {
   }
 
   const toggleAllModule = (moduleKey: string, allActions: string[]) => {
+    if (!useCustomPermissions) setUseCustomPermissions(true)
     setForm((prev) => {
       const currentActions = prev.permissions[moduleKey] || []
       const allSelected = allActions.every((a) => currentActions.includes(a))
@@ -212,8 +215,16 @@ export function UserForm() {
       </div>
 
       {errors.form && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           {errors.form}
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+          <Check className="w-4 h-4 flex-shrink-0" />
+          {successMsg}
         </div>
       )}
 
@@ -332,8 +343,8 @@ export function UserForm() {
               <h2 className="font-semibold text-lg">Permissões por Módulo</h2>
               <p className="text-sm text-muted-foreground">
                 {useCustomPermissions
-                  ? 'Permissões personalizadas — configure individualmente cada módulo'
-                  : `Usando permissões padrão do grupo "${ROLE_OPTIONS.find((r) => r.value === form.role)?.label}"`}
+                  ? 'Permissões personalizadas — clique nos botões para ativar/desativar cada ação'
+                  : `Usando permissões padrão do grupo "${ROLE_OPTIONS.find((r) => r.value === form.role)?.label}". Clique em qualquer permissão para personalizar.`}
               </p>
             </div>
             <button
@@ -389,16 +400,12 @@ export function UserForm() {
                             {isAvailable ? (
                               <button
                                 type="button"
-                                disabled={!useCustomPermissions}
                                 onClick={() => togglePermission(mod.key, action)}
                                 className={cn(
-                                  'w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition',
+                                  'w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition hover:scale-110 cursor-pointer',
                                   isActive
                                     ? 'bg-primary text-white shadow-sm'
-                                    : 'bg-muted/50 text-muted-foreground',
-                                  useCustomPermissions
-                                    ? 'hover:scale-110 cursor-pointer'
-                                    : 'cursor-default opacity-75'
+                                    : 'bg-muted/50 text-muted-foreground'
                                 )}
                               >
                                 {isActive && <Check className="w-4 h-4" />}
@@ -412,16 +419,12 @@ export function UserForm() {
                       <td className="text-center py-3 px-3">
                         <button
                           type="button"
-                          disabled={!useCustomPermissions}
                           onClick={() => toggleAllModule(mod.key, mod.actions)}
                           className={cn(
-                            'w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition border-2',
+                            'w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition border-2 hover:scale-110 cursor-pointer',
                             allSelected
                               ? 'bg-primary border-primary text-white'
-                              : 'border-muted-foreground/30 text-muted-foreground',
-                            useCustomPermissions
-                              ? 'hover:scale-110 cursor-pointer'
-                              : 'cursor-default opacity-75'
+                              : 'border-muted-foreground/30 text-muted-foreground'
                           )}
                         >
                           {allSelected && <Check className="w-4 h-4" />}
