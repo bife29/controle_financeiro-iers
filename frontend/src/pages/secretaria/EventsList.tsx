@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
-import { Plus, Edit2, Trash2, MessageCircle, MapPin } from 'lucide-react'
+import { Plus, Edit2, Trash2, MessageCircle, MapPin, ArrowLeft } from 'lucide-react'
 import { WhatsappShareDialog } from '@/components/WhatsappShareDialog'
 
 interface EventItem {
@@ -40,6 +40,9 @@ export function EventsList() {
 
   return (
     <div className="space-y-5">
+      <Link to="/secretaria" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+        <ArrowLeft className="w-4 h-4" /> Voltar para Secretaria
+      </Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Eventos</h1>

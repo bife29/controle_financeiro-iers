@@ -7,7 +7,7 @@ import {
   addMonths, subMonths, format, isSameMonth, isSameDay,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Cake, CalendarDays, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Cake, CalendarDays, Plus, ArrowLeft } from 'lucide-react'
 import { ageGroupColor, ageGroupLabel } from '@/lib/ageGroups'
 
 interface BirthdayItem {
@@ -96,6 +96,9 @@ export function CalendarPage() {
 
   return (
     <div className="space-y-4">
+      <Link to="/secretaria" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+        <ArrowLeft className="w-4 h-4" /> Voltar para Secretaria
+      </Link>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold capitalize">

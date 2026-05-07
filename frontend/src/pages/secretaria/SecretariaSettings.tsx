@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
-import { Save } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Save, ArrowLeft } from 'lucide-react'
 
 interface ChurchSettings {
   id: number
@@ -57,6 +58,9 @@ export function SecretariaSettings() {
 
   return (
     <div className="space-y-5 max-w-xl">
+      <Link to="/secretaria" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+        <ArrowLeft className="w-4 h-4" /> Voltar para Secretaria
+      </Link>
       <div>
         <h1 className="text-2xl font-bold">Configurações da Secretaria</h1>
         <p className="text-sm text-muted-foreground">

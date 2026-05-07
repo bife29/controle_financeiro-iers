@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
-import { Plus, Edit2, Trash2, X, Star } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Edit2, Trash2, X, Star, ArrowLeft } from 'lucide-react'
 
 interface MessageTemplate {
   id: number
@@ -47,6 +48,9 @@ export function MessageTemplatesList() {
 
   return (
     <div className="space-y-5">
+      <Link to="/secretaria" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+        <ArrowLeft className="w-4 h-4" /> Voltar para Secretaria
+      </Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Modelos de mensagem</h1>
