@@ -577,8 +577,47 @@ export function ImportPage() {
                 3. Análise de Duplicidades ({importResult.possiveis_duplicidades.length})
               </h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Compare os lançamentos do arquivo com os existentes no banco. Decida para cada um.
+                Compare os lançamentos do arquivo com os existentes no banco. Decida para cada um — ou use as ações em massa abaixo.
               </p>
+
+              {/* Ações em massa */}
+              <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-muted/30 rounded-lg border">
+                <span className="text-xs font-medium text-muted-foreground mr-1">
+                  Ações em massa:
+                </span>
+                <button
+                  onClick={() => {
+                    const all: Record<number, 'ignore' | 'import'> = {}
+                    importResult.possiveis_duplicidades.forEach((_, i) => { all[i] = 'ignore' })
+                    setDuplicateDecisions(all)
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-full border bg-white hover:bg-gray-100 transition"
+                  data-testid="dup-ignore-all"
+                >
+                  Ignorar todas (são duplicadas)
+                </button>
+                <button
+                  onClick={() => {
+                    const all: Record<number, 'ignore' | 'import'> = {}
+                    importResult.possiveis_duplicidades.forEach((_, i) => { all[i] = 'import' })
+                    setDuplicateDecisions(all)
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-full border bg-white hover:bg-blue-50 transition"
+                  data-testid="dup-import-all"
+                >
+                  Importar todas (são lançamentos diferentes)
+                </button>
+                <button
+                  onClick={() => setDuplicateDecisions({})}
+                  className="text-xs px-3 py-1.5 rounded-full border bg-white hover:bg-gray-100 transition text-muted-foreground"
+                  data-testid="dup-clear-all"
+                >
+                  Limpar decisões
+                </button>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {Object.keys(duplicateDecisions).length}/{importResult.possiveis_duplicidades.length} decididas
+                </span>
+              </div>
 
               <div className="space-y-3">
                 {importResult.possiveis_duplicidades.map((dup, i) => (

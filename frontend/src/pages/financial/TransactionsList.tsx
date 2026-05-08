@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download, CheckCircle2 } from 'lucide-react'
 
 interface Transaction {
@@ -26,13 +26,24 @@ interface Project {
 
 export function TransactionsList() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState('')
-  const [filterProject, setFilterProject] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
+  const [filterType, setFilterType] = useState(searchParams.get('type') || '')
+  const [filterProject, setFilterProject] = useState(searchParams.get('project_id') || '')
+  const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '')
   const [deleteConfirm, setDeleteConfirm] = useState<Transaction | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false)
+
+  // Mantém URL e filtros sincronizados (entrada vinda do hub "A pagar / A receber"
+  // e mudanças feitas na própria tela ficam refletidas na URL para deep-link).
+  useEffect(() => {
+    const next = new URLSearchParams()
+    if (filterType) next.set('type', filterType)
+    if (filterStatus) next.set('status', filterStatus)
+    if (filterProject) next.set('project_id', filterProject)
+    setSearchParams(next, { replace: true })
+  }, [filterType, filterStatus, filterProject, setSearchParams])
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
