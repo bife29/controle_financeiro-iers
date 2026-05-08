@@ -115,10 +115,10 @@ export function ReportsPage() {
       if (def.fields.includes('member') && memberId) params.member_id = memberId
 
       const res = await api.get(def.endpoint, { params, responseType: 'blob' })
-      const cd: string = res.headers['content-disposition'] || ''
+      const cd = String(res.headers['content-disposition'] || '')
       const match = /filename="([^"]+)"/.exec(cd)
       const filename = match ? match[1] : `${selected}.${fmt}`
-      const blob = new Blob([res.data], { type: res.headers['content-type'] })
+      const blob = new Blob([res.data], { type: String(res.headers['content-type'] || '') })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
