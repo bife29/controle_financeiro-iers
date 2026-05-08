@@ -11,6 +11,7 @@ import { PatrimonyPage } from '@/pages/patrimony'
 import { FeedbackPage } from '@/pages/Feedback'
 import { UsersPage } from '@/pages/users'
 import { ManualPage } from '@/pages/Manual'
+import { ReportsPage } from '@/pages/Reports'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="retiros/*" element={<RetreatsPage />} />
         <Route path="patrimonio/*" element={<PatrimonyPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
+        <Route path="relatorios" element={<ReportsPage />} />
         <Route path="usuarios/*" element={<UsersPage />} />
         <Route path="manual" element={<ManualPage />} />
       </Route>

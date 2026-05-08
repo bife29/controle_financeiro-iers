@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
 import {
@@ -57,6 +57,17 @@ export function AssetDetail() {
   const [showMaintForm, setShowMaintForm] = useState(false)
   const [returnTarget, setReturnTarget] = useState<MaintenanceRow | null>(null)
   const [showWriteOff, setShowWriteOff] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Atalho via querystring: /patrimonio/bens/:id?action=maintenance abre o modal direto
+  useEffect(() => {
+    if (searchParams.get('action') === 'maintenance') {
+      setShowMaintForm(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('action')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const { data: asset, isLoading } = useQuery<AssetDetail>({
     queryKey: ['asset', id],
@@ -147,6 +158,28 @@ export function AssetDetail() {
             Motivo: <strong>{reasonLabel(asset.decommission_reason)}</strong>
             {asset.decommission_other && <> — {asset.decommission_other}</>}
           </p>
+        </div>
+      )}
+
+      {inMaintenance && openMaint && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 text-sm flex items-start gap-3">
+          <Wrench className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold text-amber-900">
+              Este bem está em manutenção desde {formatBrDate(openMaint.sent_date)}.
+            </p>
+            <p className="text-amber-800 text-xs mt-1">
+              Quando voltar, clique no botão verde <strong>“Registrar retorno”</strong> abaixo para informar
+              <strong> data de retorno, custo final, garantia da manutenção</strong> e o novo status do bem
+              (Ativo em uso ou Reserva). O sistema atualiza o status automaticamente.
+            </p>
+          </div>
+          <button
+            onClick={() => setReturnTarget(openMaint)}
+            className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 shrink-0"
+          >
+            Registrar retorno
+          </button>
         </div>
       )}
 
@@ -315,6 +348,8 @@ function MaintenanceFormModal({
     provider_address: existing?.provider_address ?? '',
     provider_phone: existing?.provider_phone ?? '',
     provider_deadline: existing?.provider_deadline ?? '',
+    cost: existing?.cost != null ? String(existing.cost) : '',
+    service_warranty_until: existing?.service_warranty_until ?? '',
     notes: existing?.notes ?? '',
   })
   const [error, setError] = useState('')
@@ -328,6 +363,8 @@ function MaintenanceFormModal({
         provider_address: form.provider_address || null,
         provider_phone: form.provider_phone || null,
         provider_deadline: form.provider_deadline || null,
+        cost: form.cost !== '' ? Number(form.cost) : null,
+        service_warranty_until: form.service_warranty_until || null,
         notes: form.notes || null,
       }
       return existing
@@ -382,6 +419,25 @@ function MaintenanceFormModal({
             rows={2}
             className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
         </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Custo previsto / orçamento (R$)">
+            <input type="number" step="0.01" value={form.cost}
+              onChange={(e) => setForm({ ...form, cost: e.target.value })}
+              placeholder="Opcional — pode informar agora ou só no retorno"
+              className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          </Field>
+          <Field label="Garantia da manutenção até">
+            <input type="date" value={form.service_warranty_until}
+              onChange={(e) => setForm({ ...form, service_warranty_until: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          </Field>
+        </div>
+
+        <p className="text-xs bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-2">
+          ℹ️ Ao salvar, o status do bem será alterado automaticamente para <strong>“Em manutenção”</strong>.
+          Quando o bem voltar, clique em <strong>“Registrar retorno”</strong> para informar custo final, garantia e novo status.
+        </p>
 
         {error && <p className="text-sm bg-red-50 border border-red-200 text-red-700 rounded-lg p-3">{error}</p>}
 
@@ -442,13 +498,16 @@ function ReturnMaintenanceModal({
               onChange={(e) => setForm({ ...form, cost: e.target.value })}
               className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
           </Field>
-          <Field label="Volta ao status">
+          <Field label="Volta ao status *">
             <select value={form.new_status}
               onChange={(e) => setForm({ ...form, new_status: e.target.value })}
               className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
               <option value="active_in_use">Ativo em uso</option>
               <option value="active_reserve">Ativo / Reserva</option>
             </select>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              ⚠️ O status do bem será atualizado automaticamente ao salvar.
+            </p>
           </Field>
         </div>
         <Field label="Observações">

@@ -24,6 +24,7 @@ from .modules.feedback.routes import router as feedback_router
 from .modules.retreat.routes import router as retreat_router
 from .modules.secretaria.routes import router as secretaria_router
 from .modules.patrimony.routes import router as patrimony_router
+from .modules.reports.routes import router as reports_router
 
 
 def create_app() -> FastAPI:
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(retreat_router)
     app.include_router(secretaria_router)
     app.include_router(patrimony_router)
+    app.include_router(reports_router)
 
     @app.on_event("startup")
     async def startup():

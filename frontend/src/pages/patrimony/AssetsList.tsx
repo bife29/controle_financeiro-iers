@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Plus, Search, Eye, Edit2 } from 'lucide-react'
+import { Plus, Search, Eye, Edit2, Wrench } from 'lucide-react'
 import { ASSET_STATUSES, formatCurrency, formatBrDate, statusInfo } from '@/lib/patrimony'
 
 interface AssetRow {
@@ -170,11 +170,30 @@ export function AssetsList() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Link to={`${a.id}`} className="p-1.5 hover:bg-gray-100 rounded" title="Detalhes">
-                          <Eye className="w-4 h-4" />
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        <Link
+                          to={`${a.id}`}
+                          className="px-2 py-1 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 rounded inline-flex items-center gap-1"
+                          title="Ver detalhes"
+                          data-testid={`asset-detail-${a.id}`}
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Detalhes
                         </Link>
-                        <Link to={`${a.id}/editar`} className="p-1.5 hover:bg-gray-100 rounded" title="Editar">
+                        {a.status !== 'in_maintenance' && a.status !== 'decommissioned' && (
+                          <Link
+                            to={`${a.id}?action=maintenance`}
+                            className="px-2 py-1 text-xs bg-orange-50 text-orange-700 hover:bg-orange-100 rounded inline-flex items-center gap-1"
+                            title="Enviar para manutenção"
+                            data-testid={`asset-maintenance-${a.id}`}
+                          >
+                            <Wrench className="w-3.5 h-3.5" /> Manutenção
+                          </Link>
+                        )}
+                        <Link
+                          to={`${a.id}/editar`}
+                          className="p-1.5 hover:bg-gray-100 rounded"
+                          title="Editar"
+                        >
                           <Edit2 className="w-4 h-4" />
                         </Link>
                       </div>

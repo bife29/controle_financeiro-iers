@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useState } from 'react'
 import {
   LayoutDashboard, DollarSign, Users, Mountain,
-  MessageSquare, LogOut, Menu, ShieldCheck, BookOpen, CalendarDays, Boxes
+  MessageSquare, LogOut, Menu, ShieldCheck, BookOpen, CalendarDays, Boxes, FileBarChart
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,7 @@ const navigation = [
   { name: 'Secretaria', href: '/secretaria', icon: CalendarDays, roles: ['super_admin', 'pastor', 'secretaria'] },
   { name: 'Retiros', href: '/retiros', icon: Mountain, roles: ['super_admin', 'pastor', 'secretaria'] },
   { name: 'Patrimônio', href: '/patrimonio', icon: Boxes, roles: ['super_admin', 'pastor', 'financeiro', 'secretaria', 'viewer'] },
+  { name: 'Relatórios', href: '/relatorios', icon: FileBarChart, roles: ['super_admin', 'pastor', 'financeiro'] },
   { name: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['super_admin', 'pastor', 'financeiro', 'secretaria'] },
   { name: 'Usuários', href: '/usuarios', icon: ShieldCheck, roles: ['super_admin'] },
   { name: 'Manual', href: '/manual', icon: BookOpen, roles: ['super_admin', 'pastor', 'financeiro', 'secretaria', 'viewer'] },

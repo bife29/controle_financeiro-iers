@@ -449,9 +449,17 @@ function SectionPatrimonio() {
       </Accordion>
 
       <Accordion title="🔧 Como registrar manutenção">
-        <FlowStep steps={['Patrimônio', 'Bem', 'Detalhe', 'Nova manutenção', 'Preencher e salvar']} color="amber" />
-        <p className="text-sm mt-2">Ao enviar para manutenção informe: <strong>prestador, motivo, data de envio</strong>. O status do bem muda para <em>"Em manutenção"</em>.</p>
-        <p className="text-sm mt-2">Quando voltar, registre o <strong>retorno</strong>: data, custo do serviço, garantia e novo status (Em uso ou Reserva).</p>
+        <FlowStep steps={['Patrimônio', 'Bens', 'Botão "Manutenção" na linha', 'Preencher e salvar']} color="amber" />
+        <p className="text-sm mt-2">
+          <strong>Atalho rápido:</strong> na lista de bens, clique no botão laranja <strong>“Manutenção”</strong> ao lado do bem.
+          O modal de envio abre direto. Alternativamente, clique em <strong>“Detalhes”</strong> e depois em <strong>“Enviar p/ manutenção”</strong>.
+        </p>
+        <p className="text-sm mt-2">Campos no envio: <strong>data de saída, prestador, telefone, prazo, custo previsto, garantia, observações</strong>. O status do bem muda automaticamente para <em>“Em manutenção”</em>.</p>
+        <p className="text-sm mt-2">
+          Quando voltar, abra o detalhe do bem e clique em <strong>“Registrar retorno”</strong> (botão verde).
+          Informe: <strong>data de retorno, custo final, garantia da manutenção</strong> e o <strong>novo status</strong> (Ativo em uso ou Reserva).
+          O sistema atualiza o status automaticamente.
+        </p>
         <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2 text-xs text-amber-800">
           <p>💰 O custo da manutenção pode opcionalmente gerar uma <strong>transação de Saída</strong> no Financeiro (configurável ao registrar).</p>
         </div>
