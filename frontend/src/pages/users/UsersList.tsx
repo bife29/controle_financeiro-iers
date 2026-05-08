@@ -30,12 +30,20 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: 'bg-gray-100 text-gray-800',
 }
 
+interface DeleteConflict {
+  message: string
+  references: { transactions: number; audit_logs: number; feedbacks: number }
+  can_force: boolean
+}
+
 export function UsersList() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [resetPasswordModal, setResetPasswordModal] = useState<User | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null)
+  const [forceConfirm, setForceConfirm] = useState<{ user: User; conflict: DeleteConflict } | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -49,10 +57,30 @@ export function UsersList() {
   })
 
   const deleteUser = useMutation({
-    mutationFn: (userId: number) => api.delete(`/api/auth/users/${userId}`),
+    mutationFn: ({ userId, force }: { userId: number; force?: boolean }) =>
+      api.delete(`/api/auth/users/${userId}${force ? '?force=true' : ''}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setDeleteConfirm(null)
+      setForceConfirm(null)
+      setDeleteError(null)
+    },
+    onError: (err: any, vars) => {
+      const status = err?.response?.status
+      const detail = err?.response?.data?.detail
+      if (status === 409 && detail && typeof detail === 'object' && detail.can_force) {
+        const user = forceConfirm?.user ?? deleteConfirm
+        if (user && user.id === vars.userId) {
+          setForceConfirm({ user, conflict: detail as DeleteConflict })
+          setDeleteConfirm(null)
+          setDeleteError(null)
+          return
+        }
+      }
+      const msg = typeof detail === 'string'
+        ? detail
+        : detail?.message || 'Falha ao excluir usuário.'
+      setDeleteError(msg)
     },
   })
 
@@ -260,12 +288,69 @@ export function UsersList() {
                 Cancelar
               </button>
               <button
-                onClick={() => deleteUser.mutate(deleteConfirm.id)}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                onClick={() => deleteUser.mutate({ userId: deleteConfirm.id })}
+                disabled={deleteUser.isPending}
+                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50"
               >
                 Excluir
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Force Delete (2ª confirmação quando há referências) */}
+      {forceConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl">
+            <h3 className="text-lg font-bold mb-1 text-red-600">Usuário possui dados vinculados</h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              <strong>{forceConfirm.user.name}</strong> não pode ser excluído normalmente porque possui:
+            </p>
+            <ul className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 space-y-1">
+              {forceConfirm.conflict.references.transactions > 0 && (
+                <li>• <strong>{forceConfirm.conflict.references.transactions}</strong> transação(ões) financeira(s) — <em>serão preservadas</em> (autoria removida)</li>
+              )}
+              {forceConfirm.conflict.references.audit_logs > 0 && (
+                <li>• <strong>{forceConfirm.conflict.references.audit_logs}</strong> registro(s) de auditoria — <em>serão preservados</em> (autoria removida)</li>
+              )}
+              {forceConfirm.conflict.references.feedbacks > 0 && (
+                <li>• <strong>{forceConfirm.conflict.references.feedbacks}</strong> feedback(s) — <em>serão removidos</em></li>
+              )}
+            </ul>
+            <p className="text-sm text-muted-foreground mb-4">
+              Recomendamos <strong>desativar</strong> em vez de excluir. Se preferir excluir, as movimentações financeiras serão mantidas no sistema.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setForceConfirm(null)}
+                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteUser.mutate({ userId: forceConfirm.user.id, force: true })}
+                disabled={deleteUser.isPending}
+                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+              >
+                Excluir mesmo assim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast de erro genérico de delete */}
+      {deleteError && (
+        <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-xl z-50 max-w-md">
+          <div className="flex items-start gap-3">
+            <span className="text-sm">{deleteError}</span>
+            <button
+              onClick={() => setDeleteError(null)}
+              className="text-white/80 hover:text-white text-xs font-bold"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}

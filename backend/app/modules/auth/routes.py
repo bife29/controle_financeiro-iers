@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, func, select, update
 from sqlalchemy.orm.attributes import flag_modified
 from ...core.database import get_db
 from ...core.security import (
     hash_password, verify_password, create_access_token,
     get_current_user, require_roles
 )
+from ..feedback.models import Feedback
+from ..financial.models import AuditLog, Transaction
 from .models import User
 from .schemas import (
     UserCreate, UserUpdate, UserResponse, LoginRequest, TokenResponse,
@@ -137,6 +139,13 @@ async def reset_password(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int,
+    force: bool = Query(
+        False,
+        description=(
+            "Se True, anonimiza referências (transações e auditoria ficam com "
+            "autor NULL) e remove feedbacks do usuário antes de excluir."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles("super_admin"))
 ):
@@ -148,9 +157,75 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
+    # Conta referências para decidir 409 ou prosseguir
+    tx_count = (await db.execute(
+        select(func.count()).select_from(Transaction).where(Transaction.created_by == user_id)
+    )).scalar_one()
+    audit_count = (await db.execute(
+        select(func.count()).select_from(AuditLog).where(AuditLog.user_id == user_id)
+    )).scalar_one()
+    feedback_count = (await db.execute(
+        select(func.count()).select_from(Feedback).where(Feedback.user_id == user_id)
+    )).scalar_one()
+
+    has_refs = (tx_count + audit_count + feedback_count) > 0
+
+    if has_refs and not force:
+        partes = []
+        if tx_count:
+            partes.append(f"{tx_count} transação(ões)")
+        if audit_count:
+            partes.append(f"{audit_count} registro(s) de auditoria")
+        if feedback_count:
+            partes.append(f"{feedback_count} feedback(s)")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    "Usuário possui " + ", ".join(partes) + ". "
+                    "Desative-o ou confirme a exclusão forçada."
+                ),
+                "references": {
+                    "transactions": tx_count,
+                    "audit_logs": audit_count,
+                    "feedbacks": feedback_count,
+                },
+                "can_force": True,
+            },
+        )
+
+    if force and has_refs:
+        # Preserva movimentação financeira e auditoria, apenas remove autoria
+        if tx_count:
+            await db.execute(
+                update(Transaction)
+                .where(Transaction.created_by == user_id)
+                .values(created_by=None)
+            )
+        if audit_count:
+            await db.execute(
+                update(AuditLog)
+                .where(AuditLog.user_id == user_id)
+                .values(user_id=None)
+            )
+        # Feedbacks têm FK NOT NULL — removidos junto (são pessoais ao usuário)
+        if feedback_count:
+            await db.execute(
+                sql_delete(Feedback).where(Feedback.user_id == user_id)
+            )
+
     await db.delete(user)
     await db.flush()
-    return {"detail": "Usuário excluído com sucesso"}
+    return {
+        "detail": "Usuário excluído com sucesso",
+        "preserved": {
+            "transactions": tx_count if force else 0,
+            "audit_logs": audit_count if force else 0,
+        },
+        "removed": {
+            "feedbacks": feedback_count if force else 0,
+        },
+    }
 
 
 @router.get("/permissions/defaults")

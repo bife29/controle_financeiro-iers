@@ -166,4 +166,104 @@ test.describe("Gestão de Usuários - API", () => {
     const response = await request.delete(`/api/auth/users/${me.id}`, { headers });
     expect(response.status()).toBe(400);
   });
+
+  // ============ EXCLUSÃO COM REFERÊNCIAS (FK) ============
+
+  test("DELETE bloqueia (409) quando usuário tem transação criada e força preserva a transação", async ({ request }) => {
+    // 1. Cria usuário e loga como ele
+    const email = tagEmail(`del-tx-${Date.now()}`);
+    const password = "senha123";
+    const created = await request.post("/api/auth/register", {
+      headers,
+      data: { name: tag(`DelTx ${Date.now()}`), email, password, role: "financeiro" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const newUser = await created.json();
+
+    const loginResp = await request.post("/api/auth/login", { data: { email, password } });
+    expect(loginResp.ok()).toBeTruthy();
+    const { access_token } = await loginResp.json();
+    const userHeaders = { Authorization: `Bearer ${access_token}` };
+
+    // 2. Esse usuário cria uma transação (created_by = newUser.id)
+    const txResp = await request.post("/api/financial/transactions", {
+      headers: userHeaders,
+      data: {
+        type: "Entrada",
+        date: new Date().toISOString().slice(0, 10),
+        value: 12.34,
+        description: tag(`Tx do usuário a excluir ${Date.now()}`),
+        status: "Confirmado",
+      },
+    });
+    expect(txResp.ok()).toBeTruthy();
+    const tx = await txResp.json();
+
+    // 3. DELETE sem force → 409 com contagem
+    const blocked = await request.delete(`/api/auth/users/${newUser.id}`, { headers });
+    expect(blocked.status()).toBe(409);
+    const conflict = await blocked.json();
+    expect(conflict.detail.references.transactions).toBeGreaterThanOrEqual(1);
+    expect(conflict.detail.can_force).toBe(true);
+
+    // 4. DELETE com ?force=true → 200, retorna preserved
+    const forced = await request.delete(`/api/auth/users/${newUser.id}?force=true`, { headers });
+    expect(forced.ok()).toBeTruthy();
+    const result = await forced.json();
+    expect(result.preserved.transactions).toBeGreaterThanOrEqual(1);
+
+    // 5. Usuário sumiu
+    const getResp = await request.get(`/api/auth/users/${newUser.id}`, { headers });
+    expect(getResp.status()).toBe(404);
+
+    // 6. Transação ainda existe (preservada com created_by=NULL)
+    const txGet = await request.get(`/api/financial/transactions?limit=500`, { headers });
+    const list = await txGet.json();
+    const stillThere = list.find((t: any) => t.id === tx.id);
+    expect(stillThere).toBeDefined();
+
+    // Cleanup: remove a transação tagueada
+    await request.delete(`/api/financial/transactions/${tx.id}`, { headers });
+  });
+
+  test("DELETE bloqueia (409) quando usuário tem feedback e força remove o feedback", async ({ request }) => {
+    const email = tagEmail(`del-fb-${Date.now()}`);
+    const password = "senha123";
+    const created = await request.post("/api/auth/register", {
+      headers,
+      data: { name: tag(`DelFb ${Date.now()}`), email, password, role: "viewer" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const newUser = await created.json();
+
+    const loginResp = await request.post("/api/auth/login", { data: { email, password } });
+    const { access_token } = await loginResp.json();
+    const userHeaders = { Authorization: `Bearer ${access_token}` };
+
+    // Usuário cria feedback
+    const fbResp = await request.post("/api/feedback/", {
+      headers: userHeaders,
+      data: {
+        type: "sugestao",
+        title: tag(`Feedback do usuário a excluir ${Date.now()}`),
+        description: tag("desc"),
+      },
+    });
+    expect(fbResp.ok()).toBeTruthy();
+
+    // 409 sem force
+    const blocked = await request.delete(`/api/auth/users/${newUser.id}`, { headers });
+    expect(blocked.status()).toBe(409);
+    const conflict = await blocked.json();
+    expect(conflict.detail.references.feedbacks).toBeGreaterThanOrEqual(1);
+
+    // force=true → remove feedback junto
+    const forced = await request.delete(`/api/auth/users/${newUser.id}?force=true`, { headers });
+    expect(forced.ok()).toBeTruthy();
+    const result = await forced.json();
+    expect(result.removed.feedbacks).toBeGreaterThanOrEqual(1);
+
+    const getResp = await request.get(`/api/auth/users/${newUser.id}`, { headers });
+    expect(getResp.status()).toBe(404);
+  });
 });
