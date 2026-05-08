@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ...core.database import get_db
-from ...core.security import get_current_user, require_roles
+from ...core.security import get_current_user, require_roles, require_permission
 from ..financial.models import Transaction
 from .models import Asset, AssetCategory, AssetLocation, AssetMaintenance
 from .schemas import (
@@ -24,6 +24,11 @@ router = APIRouter(prefix="/api/patrimony", tags=["Patrimônio"])
 
 WRITE_ROLES = ("super_admin", "pastor", "secretaria", "financeiro")
 DELETE_ROLES = ("super_admin", "pastor")
+
+# Helpers de permissao granular (modulo patrimonio)
+_perm_create = require_permission("patrimonio", "create")
+_perm_edit = require_permission("patrimonio", "edit")
+_perm_delete = require_permission("patrimonio", "delete")
 
 
 # =================== Helpers ===================
@@ -87,7 +92,7 @@ async def list_categories(
 async def create_category(
     data: AssetCategoryCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     exists = (await db.execute(
         select(AssetCategory).where(func.lower(AssetCategory.name) == data.name.strip().lower())
@@ -106,7 +111,7 @@ async def update_category(
     cat_id: int,
     data: AssetCategoryUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     cat = (await db.execute(select(AssetCategory).where(AssetCategory.id == cat_id))).scalar_one_or_none()
     if not cat:
@@ -122,7 +127,7 @@ async def update_category(
 async def delete_category(
     cat_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*DELETE_ROLES)),
+    current_user=Depends(_perm_delete),
 ):
     cat = (await db.execute(select(AssetCategory).where(AssetCategory.id == cat_id))).scalar_one_or_none()
     if not cat:
@@ -153,7 +158,7 @@ async def list_locations(
 async def create_location(
     data: AssetLocationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     exists = (await db.execute(
         select(AssetLocation).where(func.lower(AssetLocation.name) == data.name.strip().lower())
@@ -172,7 +177,7 @@ async def update_location(
     loc_id: int,
     data: AssetLocationUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     loc = (await db.execute(select(AssetLocation).where(AssetLocation.id == loc_id))).scalar_one_or_none()
     if not loc:
@@ -188,7 +193,7 @@ async def update_location(
 async def delete_location(
     loc_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*DELETE_ROLES)),
+    current_user=Depends(_perm_delete),
 ):
     loc = (await db.execute(select(AssetLocation).where(AssetLocation.id == loc_id))).scalar_one_or_none()
     if not loc:
@@ -253,7 +258,7 @@ async def get_asset(
 async def create_asset(
     data: AssetCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     payload = data.model_dump(exclude={"create_financial_transaction",
                                         "financial_project_id",
@@ -301,7 +306,7 @@ async def update_asset(
     asset_id: int,
     data: AssetUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     asset = (await db.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
     if not asset:
@@ -334,7 +339,7 @@ async def update_asset(
 async def delete_asset(
     asset_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*DELETE_ROLES)),
+    current_user=Depends(_perm_delete),
 ):
     asset = (await db.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
     if not asset:
@@ -349,7 +354,7 @@ async def send_to_maintenance(
     asset_id: int,
     data: AssetMaintenanceCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     """Envia o bem para manutenção. Cria registro e altera status para in_maintenance."""
     asset = (await db.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
@@ -374,7 +379,7 @@ async def update_maintenance(
     maint_id: int,
     data: AssetMaintenanceUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     m = (await db.execute(
         select(AssetMaintenance).where(
@@ -396,7 +401,7 @@ async def return_from_maintenance(
     maint_id: int,
     data: MaintenanceReturn,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*WRITE_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     """Registra retorno da manutenção. Atualiza last_maintenance_date e recalcula próximo vencimento."""
     asset = (await db.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
@@ -434,7 +439,7 @@ async def delete_maintenance(
     asset_id: int,
     maint_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*DELETE_ROLES)),
+    current_user=Depends(_perm_delete),
 ):
     m = (await db.execute(
         select(AssetMaintenance).where(
@@ -452,7 +457,7 @@ async def write_off_asset(
     asset_id: int,
     data: WriteOffPayload,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*DELETE_ROLES)),
+    current_user=Depends(_perm_delete),
 ):
     """Dá baixa no bem (status decommissioned)."""
     asset = (await db.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
@@ -477,7 +482,7 @@ async def write_off_asset(
 async def reactivate_asset(
     asset_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*DELETE_ROLES)),
+    current_user=Depends(_perm_delete),
 ):
     """Reverte uma baixa (volta para active_in_use)."""
     asset = (await db.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()

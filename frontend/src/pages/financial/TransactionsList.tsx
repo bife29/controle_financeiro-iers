@@ -34,6 +34,8 @@ export function TransactionsList() {
   const [deleteConfirm, setDeleteConfirm] = useState<Transaction | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false)
+  const [confirmModal, setConfirmModal] = useState<Transaction | null>(null)
+  const [confirmDate, setConfirmDate] = useState<string>('')
 
   // Mantém URL e filtros sincronizados (entrada vinda do hub "A pagar / A receber"
   // e mudanças feitas na própria tela ficam refletidas na URL para deep-link).
@@ -80,13 +82,19 @@ export function TransactionsList() {
   })
 
   const confirmTx = useMutation({
-    mutationFn: (id: number) =>
-      api.post(`/api/financial/transactions/${id}/confirm`, { payment_date: new Date().toISOString().slice(0, 10) }),
+    mutationFn: ({ id, payment_date }: { id: number; payment_date: string }) =>
+      api.post(`/api/financial/transactions/${id}/confirm`, { payment_date }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] })
+      setConfirmModal(null)
     },
   })
+
+  const openConfirmModal = (t: Transaction) => {
+    setConfirmModal(t)
+    setConfirmDate(new Date().toISOString().slice(0, 10))
+  }
 
   const filtered = transactions.filter(
     (t) =>
@@ -308,7 +316,7 @@ export function TransactionsList() {
                       <div className="flex justify-center gap-1">
                         {t.status === 'Previsto' && (
                           <button
-                            onClick={() => confirmTx.mutate(t.id)}
+                            onClick={() => openConfirmModal(t)}
                             disabled={confirmTx.isPending}
                             className="p-1.5 text-muted-foreground hover:text-green-600 rounded"
                             title="Confirmar (marcar como pago/recebido)"
@@ -388,6 +396,64 @@ export function TransactionsList() {
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {batchDelete.isPending ? 'Excluindo...' : `Excluir ${selected.size}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação de pagamento (data efetiva) */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full">
+            <h3 className="font-semibold text-lg text-green-700">Confirmar pagamento</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              "{confirmModal.description || 'Sem descrição'}" — {fmt(confirmModal.value)}
+            </p>
+            <div className="mt-4">
+              <label className="block text-sm font-medium mb-1">Data do pagamento</label>
+              <input
+                type="date"
+                value={confirmDate}
+                onChange={(e) => setConfirmDate(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              />
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDate(new Date().toISOString().slice(0, 10))}
+                  className="text-xs px-2 py-1 border rounded hover:bg-muted"
+                >
+                  Hoje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDate(confirmModal.date)}
+                  className="text-xs px-2 py-1 border rounded hover:bg-muted"
+                  title={`Vencimento: ${fmtDate(confirmModal.date)}`}
+                >
+                  Usar vencimento ({fmtDate(confirmModal.date)})
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Esta é a data em que o dinheiro efetivamente entrou/saiu do caixa.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 border rounded-lg hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() =>
+                  confirmTx.mutate({ id: confirmModal.id, payment_date: confirmDate })
+                }
+                disabled={confirmTx.isPending || !confirmDate}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {confirmTx.isPending ? 'Confirmando...' : 'Confirmar'}
               </button>
             </div>
           </div>

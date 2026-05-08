@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from ...core.database import get_db
 from ...core.config import settings
-from ...core.security import get_current_user, require_roles
+from ...core.security import get_current_user, require_roles, require_permission
 
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
@@ -50,7 +50,7 @@ async def list_categories(
 async def create_category(
     data: CategoryCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "create"))
 ):
     cat = Category(**data.model_dump())
     db.add(cat)
@@ -64,7 +64,7 @@ async def update_category(
     category_id: int,
     data: CategoryCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "edit"))
 ):
     result = await db.execute(select(Category).where(Category.id == category_id))
     cat = result.scalar_one_or_none()
@@ -81,7 +81,7 @@ async def update_category(
 async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "delete"))
 ):
     result = await db.execute(select(Category).where(Category.id == category_id))
     cat = result.scalar_one_or_none()
@@ -112,7 +112,7 @@ async def list_projects(
 async def create_project(
     data: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
+    current_user=Depends(require_permission("financeiro", "create"))
 ):
     project = Project(**data.model_dump())
     db.add(project)
@@ -126,7 +126,7 @@ async def update_project(
     project_id: int,
     data: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "edit"))
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -144,7 +144,7 @@ async def update_project(
 async def delete_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin"))
+    current_user=Depends(require_permission("financeiro", "delete"))
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -280,7 +280,7 @@ async def list_transactions(
 async def create_transaction(
     data: TransactionCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "create"))
 ):
     if data.status not in ("Previsto", "Confirmado"):
         raise HTTPException(status_code=400, detail="status deve ser 'Previsto' ou 'Confirmado'")
@@ -308,7 +308,7 @@ async def create_transaction(
 async def batch_delete_transactions(
     data: BatchDeleteRequest,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "delete"))
 ):
     """Exclui múltiplas transações de uma vez."""
     if not data.ids:
@@ -355,7 +355,7 @@ async def update_transaction(
     transaction_id: int,
     data: TransactionUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "edit"))
 ):
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     transaction = result.scalar_one_or_none()
@@ -388,7 +388,7 @@ async def confirm_transaction(
     transaction_id: int,
     payload: TransactionConfirmPayload,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "edit"))
 ):
     """Confirma uma transação Previsto (baixa manual). Mantém o mesmo registro."""
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
@@ -418,7 +418,7 @@ async def confirm_transaction(
 async def delete_transaction(
     transaction_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "delete"))
 ):
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     transaction = result.scalar_one_or_none()
@@ -439,7 +439,7 @@ async def delete_transaction(
 async def create_recurring_transactions(
     data: RecurringTransactionCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "create"))
 ):
     """
     Cria transações recorrentes (previstos).
@@ -610,7 +610,7 @@ async def list_participant_events(
 async def create_participant_event(
     data: ParticipantEventCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "create"))
 ):
     pe = ParticipantEvent(**data.model_dump())
     db.add(pe)
@@ -624,7 +624,7 @@ async def update_participant_event(
     pe_id: int,
     data: ParticipantEventUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "financeiro"))
+    current_user=Depends(require_permission("financeiro", "edit"))
 ):
     result = await db.execute(select(ParticipantEvent).where(ParticipantEvent.id == pe_id))
     pe = result.scalar_one_or_none()

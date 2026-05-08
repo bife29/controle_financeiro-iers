@@ -127,7 +127,15 @@ export function TransactionForm() {
       status: form.status,
     }
 
-    if (isRecurring) {
+    // Sanitiza payload: remove chaves com string vazia/undefined (evita erros
+    // de Pydantic do tipo "date: Input should be a valid date" quando o front
+    // envia "" em campo opcional).
+    Object.keys(baseData).forEach((k) => {
+      const v = baseData[k]
+      if (v === '' || v === undefined) delete baseData[k]
+    })
+
+    if (isRecurring && !isEditing) {
       baseData.recurrence_count = Number(recurrenceCount)
       if (recurrenceDay) baseData.recurrence_day = Number(recurrenceDay)
     }
@@ -296,7 +304,8 @@ export function TransactionForm() {
           </div>
         </div>
 
-        {/* Recorrência */}
+        {/* Recorrência (apenas em novo lançamento) */}
+        {!isEditing && (
         <div className="border rounded-lg p-4 space-y-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -339,6 +348,7 @@ export function TransactionForm() {
               </div>
             )}
         </div>
+        )}
 
         {/* Botões */}
         <div className="flex justify-end gap-3 pt-4">

@@ -6,7 +6,7 @@ from typing import Optional, List
 from datetime import date
 from pydantic import BaseModel
 from ...core.database import get_db
-from ...core.security import get_current_user, require_roles
+from ...core.security import get_current_user, require_roles, require_permission
 from .models import Member
 from .schemas import (
     MemberCreate, MemberUpdate, MemberResponse, MemberSummary,
@@ -237,7 +237,7 @@ async def get_member(
 async def create_member(
     data: MemberCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+    current_user=Depends(require_permission("membros", "create"))
 ):
     # Gerar número de ficha automaticamente se não informado
     if data.ficha_num is None:
@@ -266,7 +266,7 @@ async def update_member(
     member_id: int,
     data: MemberUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+    current_user=Depends(require_permission("membros", "edit"))
 ):
     result = await db.execute(select(Member).where(Member.id == member_id))
     member = result.scalar_one_or_none()
@@ -291,7 +291,7 @@ async def update_member(
 async def delete_member(
     member_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor"))
+    current_user=Depends(require_permission("membros", "delete"))
 ):
     result = await db.execute(select(Member).where(Member.id == member_id))
     member = result.scalar_one_or_none()
@@ -306,7 +306,7 @@ async def delete_member(
 async def bulk_delete_members(
     data: BulkDeleteRequest,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor"))
+    current_user=Depends(require_permission("membros", "delete"))
 ):
     if not data.ids or len(data.ids) > 100:
         raise HTTPException(status_code=400, detail="Envie entre 1 e 100 IDs")
@@ -326,7 +326,7 @@ async def upload_member_photo(
     member_id: int,
     data: PhotoUpload,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+    current_user=Depends(require_permission("membros", "edit"))
 ):
     # Validar que é um data URI de imagem válido
     if not data.foto_perfil.startswith("data:image/"):
@@ -350,7 +350,7 @@ async def upload_member_photo(
 async def delete_member_photo(
     member_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+    current_user=Depends(require_permission("membros", "edit"))
 ):
     result = await db.execute(select(Member).where(Member.id == member_id))
     member = result.scalar_one_or_none()

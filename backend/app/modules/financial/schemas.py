@@ -1,6 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from datetime import date, datetime
+
+
+def _empty_to_none(v):
+    """Converte string vazia/'null'/'None' para None (Pydantic aceita None)."""
+    if isinstance(v, str) and v.strip() in ("", "null", "None"):
+        return None
+    return v
 
 
 # --- Category ---
@@ -88,6 +95,25 @@ class TransactionUpdate(BaseModel):
     status: Optional[str] = None
     bank_origin: Optional[str] = None
     payment_date: Optional[date] = None
+
+    # Aceita string vazia como None (frontend pode enviar "" para campos opcionais)
+    @field_validator("date", "payment_date", mode="before")
+    @classmethod
+    def _coerce_dates(cls, v):
+        return _empty_to_none(v)
+
+    @field_validator(
+        "type", "description", "payment_method", "status", "bank_origin",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_strings(cls, v):
+        return _empty_to_none(v)
+
+    @field_validator("category_id", "member_id", "project_id", mode="before")
+    @classmethod
+    def _coerce_ids(cls, v):
+        return _empty_to_none(v)
 
 
 class TransactionResponse(BaseModel):

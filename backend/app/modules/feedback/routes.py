@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
 from ...core.database import get_db
-from ...core.security import get_current_user, require_roles
+from ...core.security import get_current_user, require_roles, require_permission
 from .models import Feedback
 from .schemas import FeedbackCreate, FeedbackUpdate, FeedbackResponse
 
@@ -52,7 +52,7 @@ async def update_feedback(
     feedback_id: int,
     data: FeedbackUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin"))
+    current_user=Depends(require_permission("feedback", "edit"))
 ):
     """Apenas super_admin pode responder/atualizar status dos feedbacks."""
     result = await db.execute(select(Feedback).where(Feedback.id == feedback_id))
@@ -75,7 +75,7 @@ async def update_feedback(
 async def delete_feedback(
     feedback_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin"))
+    current_user=Depends(require_permission("feedback", "delete"))
 ):
     result = await db.execute(select(Feedback).where(Feedback.id == feedback_id))
     feedback = result.scalar_one_or_none()

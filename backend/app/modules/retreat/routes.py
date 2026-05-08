@@ -4,7 +4,7 @@ from sqlalchemy import select, func, and_
 from typing import Optional
 from datetime import date
 from ...core.database import get_db
-from ...core.security import get_current_user, require_roles
+from ...core.security import get_current_user, require_roles, require_permission
 from .models import Retreat, RetreatParticipant, RetreatPayment
 from ..financial.models import Transaction, Project
 from ..members.models import Member
@@ -122,7 +122,7 @@ async def list_retreats(
 async def create_retreat(
     data: RetreatCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+    current_user=Depends(require_permission("retiros", "create"))
 ):
     # Cria projeto financeiro automaticamente vinculado ao retiro
     project = Project(
@@ -161,7 +161,7 @@ async def update_retreat(
     retreat_id: int,
     data: RetreatUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor"))
+    current_user=Depends(require_permission("retiros", "edit"))
 ):
     result = await db.execute(select(Retreat).where(Retreat.id == retreat_id))
     retreat = result.scalar_one_or_none()
@@ -183,7 +183,7 @@ async def update_retreat(
 async def delete_retreat(
     retreat_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin"))
+    current_user=Depends(require_permission("retiros", "delete"))
 ):
     result = await db.execute(select(Retreat).where(Retreat.id == retreat_id))
     retreat = result.scalar_one_or_none()
@@ -326,7 +326,7 @@ async def add_participant(
     retreat_id: int,
     data: ParticipantCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria"))
+    current_user=Depends(require_permission("retiros", "create"))
 ):
     # Buscar o retiro para definir custo padrão
     result = await db.execute(select(Retreat).where(Retreat.id == retreat_id))
@@ -396,7 +396,7 @@ async def update_participant(
     participant_id: int,
     data: ParticipantUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria", "financeiro"))
+    current_user=Depends(require_permission("retiros", "edit"))
 ):
     result = await db.execute(select(RetreatParticipant).where(RetreatParticipant.id == participant_id))
     participant = result.scalar_one_or_none()
@@ -414,7 +414,7 @@ async def update_participant(
 async def remove_participant(
     participant_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor"))
+    current_user=Depends(require_permission("retiros", "delete"))
 ):
     result = await db.execute(select(RetreatParticipant).where(RetreatParticipant.id == participant_id))
     participant = result.scalar_one_or_none()
@@ -461,7 +461,7 @@ async def register_payment(
     payment_id: int,
     data: PaymentUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("super_admin", "pastor", "secretaria", "financeiro"))
+    current_user=Depends(require_permission("retiros", "edit"))
 ):
     """Registra pagamento de uma parcela e cria transação no financeiro."""
     result = await db.execute(select(RetreatPayment).where(RetreatPayment.id == payment_id))

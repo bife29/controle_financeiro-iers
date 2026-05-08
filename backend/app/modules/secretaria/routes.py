@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from ...core.database import get_db
-from ...core.security import get_current_user, require_roles
+from ...core.security import get_current_user, require_roles, require_permission
 from ..members.models import Member
 from ..members.utils import effective_age_group
 from .models import Event, WhatsappGroup, MessageTemplate, ChurchSettings
@@ -26,6 +26,11 @@ router = APIRouter(prefix="/api/secretaria", tags=["Secretaria"])
 
 
 SECRETARY_ROLES = ("super_admin", "pastor", "secretaria")
+
+# Helpers de permissao granular (modulo secretaria)
+_perm_create = require_permission("secretaria", "create")
+_perm_edit = require_permission("secretaria", "edit")
+_perm_delete = require_permission("secretaria", "delete")
 
 
 # =================== EVENTOS ===================
@@ -64,7 +69,7 @@ async def get_event(
 async def create_event(
     data: EventCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     event = Event(**data.model_dump(exclude_unset=True))
     db.add(event)
@@ -78,7 +83,7 @@ async def update_event(
     event_id: int,
     data: EventUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     event = (await db.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
     if not event:
@@ -94,7 +99,7 @@ async def update_event(
 async def delete_event(
     event_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     event = (await db.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
     if not event:
@@ -121,7 +126,7 @@ async def list_whatsapp_groups(
 async def create_whatsapp_group(
     data: WhatsappGroupCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     group = WhatsappGroup(**data.model_dump(exclude_unset=True))
     db.add(group)
@@ -139,7 +144,7 @@ async def update_whatsapp_group(
     group_id: int,
     data: WhatsappGroupUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     group = (await db.execute(select(WhatsappGroup).where(WhatsappGroup.id == group_id))).scalar_one_or_none()
     if not group:
@@ -159,7 +164,7 @@ async def update_whatsapp_group(
 async def delete_whatsapp_group(
     group_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     group = (await db.execute(select(WhatsappGroup).where(WhatsappGroup.id == group_id))).scalar_one_or_none()
     if not group:
@@ -186,7 +191,7 @@ async def list_templates(
 async def create_template(
     data: MessageTemplateCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     if data.is_default:
         # garantir um único default por kind
@@ -203,7 +208,7 @@ async def update_template(
     tpl_id: int,
     data: MessageTemplateUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     tpl = (await db.execute(select(MessageTemplate).where(MessageTemplate.id == tpl_id))).scalar_one_or_none()
     if not tpl:
@@ -222,7 +227,7 @@ async def update_template(
 async def delete_template(
     tpl_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     tpl = (await db.execute(select(MessageTemplate).where(MessageTemplate.id == tpl_id))).scalar_one_or_none()
     if not tpl:
@@ -257,7 +262,7 @@ async def get_settings(
 async def update_settings(
     data: ChurchSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles(*SECRETARY_ROLES)),
+    current_user=Depends(_perm_edit),
 ):
     settings = await _get_or_create_settings(db)
     for k, v in data.model_dump(exclude_unset=True).items():
