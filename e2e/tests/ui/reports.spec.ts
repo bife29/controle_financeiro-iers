@@ -2,11 +2,11 @@ import { test, expect } from "@playwright/test";
 
 test.describe("UI — página de Relatórios", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel(/e-?mail/i).fill(process.env.ADMIN_EMAIL || "admin@iers.org");
-    await page.getByLabel(/senha/i).fill(process.env.ADMIN_PASSWORD || "admin123");
+    await page.goto("/");
+    await page.getByPlaceholder("seu@email.com").fill(process.env.ADMIN_EMAIL || "admin@iers.org");
+    await page.getByPlaceholder("••••••••").fill(process.env.ADMIN_PASSWORD || "admin123");
     await page.getByRole("button", { name: /entrar/i }).click();
-    await page.waitForURL(/\/$/);
+    await page.waitForURL((url) => !url.pathname.includes("login"));
   });
 
   test("Acessa /relatorios e exibe os 5 cards", async ({ page }) => {
