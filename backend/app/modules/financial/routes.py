@@ -302,6 +302,21 @@ async def create_transaction(
     return transaction
 
 
+@router.get("/transactions/by-id/{transaction_id}", response_model=TransactionResponse)
+async def get_transaction(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
+):
+    """Busca uma transação por ID. Necessário para o form de edição não depender
+    de listar todas as transações (que era limitado a 500)."""
+    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transação não encontrada")
+    return transaction
+
+
 # IMPORTANTE: rotas com path estático (/batch) devem vir ANTES das com path param /{id}
 # para evitar que o FastAPI capture "batch" como valor do parâmetro transaction_id (Bug 1).
 @router.delete("/transactions/batch")
@@ -636,6 +651,21 @@ async def update_participant_event(
     await db.flush()
     await db.refresh(pe)
     return pe
+
+
+@router.delete("/participant-events/{pe_id}")
+async def delete_participant_event(
+    pe_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_permission("financeiro", "delete"))
+):
+    result = await db.execute(select(ParticipantEvent).where(ParticipantEvent.id == pe_id))
+    pe = result.scalar_one_or_none()
+    if not pe:
+        raise HTTPException(status_code=404, detail="Participante não encontrado")
+    await db.delete(pe)
+    await db.flush()
+    return {"detail": "Participante removido"}
 
 
 # ============ DASHBOARD ============

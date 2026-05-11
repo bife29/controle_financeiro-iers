@@ -392,6 +392,27 @@ npx playwright test tests/api/
 npx playwright test tests/ui/
 ```
 
+### 🔴 Política de Regressão E2E (obrigatória)
+
+> **Todo bug confirmado que escapou do E2E DEVE virar um teste E2E novo na mesma PR
+> da correção.** Sem exceções.
+
+Fluxo obrigatório ao corrigir um bug:
+
+1. Reproduza o bug.
+2. Escreva o teste E2E que falha (TDD) — em `e2e/tests/api/` ou `e2e/tests/ui/`.
+3. Aplique o fix e confirme que o teste passa.
+4. Rode a suite completa **local** (`npx playwright test`).
+5. Rode em **produção** após deploy (`e2e/run-prod-api.ps1`, `e2e/run-prod-chromium.ps1`).
+6. Commit único: `fix: <bug> + e2e regression`.
+
+Detalhes completos, anti-patterns e convenções: veja
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md).
+
+Casos recentes que originaram a regra:
+- `e2e/tests/api/permissions.spec.ts` — RBAC granular não-admin.
+- `e2e/tests/ui/transactions-edit.spec.ts` — validação Pydantic de campos vazios em edição.
+
 ---
 
 ## Deploy em Produção

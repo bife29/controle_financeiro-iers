@@ -70,26 +70,26 @@ export function TransactionForm() {
     queryFn: () => api.get('/api/members/summary').then((r) => r.data),
   })
 
-  // Carregar dados para edição
+  // Carregar dados para edição.
+  // Usamos /transactions/by-id/{id} (rota dedicada) em vez de listar todas as
+  // transações com limit=500 — isso falhava silenciosamente quando havia mais
+  // de 500 lançamentos no banco (form ficava em branco e Salvar virava no-op).
   useEffect(() => {
-    if (id) {
-      api.get('/api/financial/transactions', { params: { limit: 500 } }).then((r) => {
-        const tx = r.data.find((t: TransactionData) => t.id === Number(id))
-        if (tx) {
-          setForm({
-            date: tx.date,
-            type: tx.type,
-            value: String(tx.value),
-            description: tx.description || '',
-            payment_method: tx.payment_method || 'Dinheiro',
-            category_id: tx.category_id ? String(tx.category_id) : '',
-            member_id: tx.member_id ? String(tx.member_id) : '',
-            project_id: tx.project_id ? String(tx.project_id) : '',
-            status: tx.status,
-          })
-        }
+    if (!id) return
+    api.get(`/api/financial/transactions/by-id/${id}`).then((r) => {
+      const tx = r.data as TransactionData
+      setForm({
+        date: tx.date,
+        type: tx.type,
+        value: String(tx.value),
+        description: tx.description || '',
+        payment_method: tx.payment_method || 'Dinheiro',
+        category_id: tx.category_id ? String(tx.category_id) : '',
+        member_id: tx.member_id ? String(tx.member_id) : '',
+        project_id: tx.project_id ? String(tx.project_id) : '',
+        status: tx.status,
       })
-    }
+    })
   }, [id])
 
   const filteredCategories = categories.filter((c) => c.type === form.type)

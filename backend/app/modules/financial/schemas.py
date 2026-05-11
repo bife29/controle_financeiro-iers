@@ -1,6 +1,11 @@
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
-from datetime import date, datetime
+# IMPORTANTE: importar `date` com alias para evitar shadowing.
+# Em Pydantic v2, `date: Optional[date] = None` faz o atributo de classe `date`
+# valer None; ao re-resolver type hints, o tipo vira `Optional[None]` (ou seja,
+# só None) e o validador rejeita strings com "Input should be None".
+# Usar alias `_date` impede a colisão de nomes com o campo `date`.
+from datetime import date as _date, datetime
 
 
 def _empty_to_none(v):
@@ -32,8 +37,8 @@ class CategoryResponse(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    start_date: date
-    end_date: Optional[date] = None
+    start_date: _date
+    end_date: Optional[_date] = None
     financial_goal: Optional[float] = None
     status: str = "Ativo"
 
@@ -41,7 +46,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    end_date: Optional[date] = None
+    end_date: Optional[_date] = None
     financial_goal: Optional[float] = None
     status: Optional[str] = None
 
@@ -50,8 +55,8 @@ class ProjectResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    start_date: date
-    end_date: Optional[date] = None
+    start_date: _date
+    end_date: Optional[_date] = None
     financial_goal: Optional[float] = None
     status: str
     created_at: Optional[datetime] = None
@@ -72,7 +77,7 @@ class ProjectDashboard(BaseModel):
 
 # --- Transaction ---
 class TransactionCreate(BaseModel):
-    date: date
+    date: _date
     type: str
     value: float
     description: Optional[str] = None
@@ -84,7 +89,7 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionUpdate(BaseModel):
-    date: Optional[date] = None
+    date: Optional[_date] = None
     type: Optional[str] = None
     value: Optional[float] = None
     description: Optional[str] = None
@@ -94,7 +99,7 @@ class TransactionUpdate(BaseModel):
     project_id: Optional[int] = None
     status: Optional[str] = None
     bank_origin: Optional[str] = None
-    payment_date: Optional[date] = None
+    payment_date: Optional[_date] = None
 
     # Aceita string vazia como None (frontend pode enviar "" para campos opcionais)
     @field_validator("date", "payment_date", mode="before")
@@ -118,7 +123,7 @@ class TransactionUpdate(BaseModel):
 
 class TransactionResponse(BaseModel):
     id: int
-    date: date
+    date: _date
     type: str
     value: float
     description: Optional[str] = None
@@ -132,7 +137,7 @@ class TransactionResponse(BaseModel):
     recurring_group_id: Optional[str] = None
     bank_origin: Optional[str] = None
     bank_reference: Optional[str] = None
-    payment_date: Optional[date] = None
+    payment_date: Optional[_date] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -140,7 +145,7 @@ class TransactionResponse(BaseModel):
 
 
 class TransactionConfirmPayload(BaseModel):
-    payment_date: Optional[date] = None  # default: hoje
+    payment_date: Optional[_date] = None  # default: hoje
 
 
 # --- Batch Operations ---
@@ -150,7 +155,7 @@ class BatchDeleteRequest(BaseModel):
 
 # --- Recurring Transactions ---
 class RecurringTransactionCreate(BaseModel):
-    date: date
+    date: _date
     type: str
     value: float
     description: Optional[str] = None

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
-  FileText, FileSpreadsheet, BookOpen, Tags, Mountain, Users, CalendarClock,
+  FileText, FileSpreadsheet, BookOpen, Tags, Mountain, Users, CalendarClock, Eye,
 } from 'lucide-react'
 
 type ReportKey = 'cashbook' | 'by-category' | 'by-project' | 'projects-by-member' | 'payables-receivables'
@@ -80,7 +80,7 @@ export function ReportsPage() {
   const [status, setStatus] = useState(def.defaultStatus ?? '')
   const [projectId, setProjectId] = useState('')
   const [memberId, setMemberId] = useState('')
-  const [downloading, setDownloading] = useState<'pdf' | 'xlsx' | null>(null)
+  const [downloading, setDownloading] = useState<'pdf' | 'xlsx' | 'preview' | null>(null)
   const [error, setError] = useState('')
 
   // Atualiza status default ao trocar relatório
@@ -100,19 +100,56 @@ export function ReportsPage() {
     enabled: def.fields.includes('member'),
   })
 
+  function buildParams(fmt: 'pdf' | 'xlsx'): Record<string, string> {
+    const params: Record<string, string> = { format: fmt }
+    if (def.fields.includes('period')) {
+      if (start) params.start = start
+      if (end) params.end = end
+    }
+    if (def.fields.includes('type') && type) params.type = type
+    if (def.fields.includes('status') && status) params.status = status
+    if (def.fields.includes('project') && projectId) params.project_id = projectId
+    if (def.fields.includes('member') && memberId) params.member_id = memberId
+    return params
+  }
+
+  async function previewPdf() {
+    setError('')
+    setDownloading('preview')
+    try {
+      const res = await api.get(def.endpoint, {
+        params: buildParams('pdf'),
+        responseType: 'blob',
+      })
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      // Abre o PDF em nova aba (sem disparar download). O navegador renderiza
+      // inline graças ao Content-Type application/pdf.
+      const w = window.open(url, '_blank', 'noopener')
+      if (!w) {
+        // Pop-up bloqueado: faz fallback baixando.
+        const a = document.createElement('a')
+        a.href = url
+        a.target = '_blank'
+        a.rel = 'noopener'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+      // Libera o object URL após tempo suficiente para a aba carregar.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || 'Falha ao visualizar PDF')
+    } finally {
+      setDownloading(null)
+    }
+  }
+
   async function download(fmt: 'pdf' | 'xlsx') {
     setError('')
     setDownloading(fmt)
     try {
-      const params: Record<string, string> = { format: fmt }
-      if (def.fields.includes('period')) {
-        if (start) params.start = start
-        if (end) params.end = end
-      }
-      if (def.fields.includes('type') && type) params.type = type
-      if (def.fields.includes('status') && status) params.status = status
-      if (def.fields.includes('project') && projectId) params.project_id = projectId
-      if (def.fields.includes('member') && memberId) params.member_id = memberId
+      const params = buildParams(fmt)
 
       const res = await api.get(def.endpoint, { params, responseType: 'blob' })
       const cd = String(res.headers['content-disposition'] || '')
@@ -270,6 +307,17 @@ export function ReportsPage() {
         )}
 
         <div className="flex flex-wrap gap-2 pt-2 border-t">
+          <button
+            type="button"
+            disabled={downloading !== null}
+            onClick={previewPdf}
+            data-testid="report-preview-pdf"
+            title="Abre o PDF em uma nova aba para visualizar antes de baixar"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-2"
+          >
+            <Eye className="w-4 h-4" />
+            {downloading === 'preview' ? 'Abrindo...' : 'Visualizar PDF'}
+          </button>
           <button
             type="button"
             disabled={downloading !== null}
