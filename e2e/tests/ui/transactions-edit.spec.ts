@@ -90,11 +90,22 @@ test.describe("Editar Transação - UI", () => {
       console.log("[pageerror]", err.message)
     );
 
+    // Aguarda a resposta do GET by-id ANTES de continuar (caso contrário o
+    // form ainda terá value="" e a validação client-side bloqueia o submit
+    // sem disparar o PUT — falso negativo do teste em ambiente com latência).
+    const byIdPromise = page.waitForResponse(
+      (r) =>
+        r.url().includes(`/api/financial/transactions/by-id/${txId}`) &&
+        r.request().method() === "GET" &&
+        r.status() === 200,
+      { timeout: 15000 }
+    );
     await page.goto(`/financeiro/transacoes/${txId}/editar`);
+    await byIdPromise;
 
-    // Aguarda o form carregar com a data preenchida
-    const dateInput = page.locator('input[type="date"]').first();
-    await expect(dateInput).not.toHaveValue("", { timeout: 10000 });
+    // Confirma que o input de Valor foi populado pelo useEffect
+    const valueInput = page.locator('input[type="number"]').first();
+    await expect(valueInput).not.toHaveValue("", { timeout: 5000 });
 
     // Clica em Salvar (sem alterar nada)
     await page.getByRole("button", { name: /salvar/i }).click();
