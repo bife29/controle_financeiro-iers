@@ -13,13 +13,25 @@ interface Transaction {
   payment_method: string | null
   category_id: number | null
   member_id: number | null
-  project_id: number
+  project_id: number | null
   status: string
   imported_from: string | null
   created_at: string | null
 }
 
 interface Project {
+  id: number
+  name: string
+}
+
+interface Category {
+  id: number
+  name: string
+  type: 'Entrada' | 'Saída'
+  nature: string
+}
+
+interface MemberSummary {
   id: number
   name: string
 }
@@ -62,6 +74,18 @@ export function TransactionsList() {
     queryKey: ['projects'],
     queryFn: () => api.get('/api/financial/projects').then((r) => r.data),
   })
+
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/api/financial/categories').then((r) => r.data),
+  })
+
+  const { data: membersSummary = [] } = useQuery<MemberSummary[]>({
+    queryKey: ['members-summary'],
+    queryFn: () => api.get('/api/members/summary').then((r) => r.data),
+  })
+
+  // Mapas O(1) para nome de categoria/membro/projeto na renderização (usados em tooltips/empty states futuros)
 
   const buildParams = () => {
     const params: Record<string, string | number> = {
@@ -114,6 +138,15 @@ export function TransactionsList() {
     },
   })
 
+  // Edição rápida (inline) de categoria/projeto/membro — PUT direto
+  const quickEdit = useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: Partial<Pick<Transaction, 'category_id' | 'project_id' | 'member_id'>> }) =>
+      api.put(`/api/financial/transactions/${id}`, patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+    },
+  })
+
   const openConfirmModal = (t: Transaction) => {
     setConfirmModal(t)
     setConfirmDate(new Date().toISOString().slice(0, 10))
@@ -163,6 +196,7 @@ export function TransactionsList() {
   }
 
   const projectName = (id: number) => projects.find((p) => p.id === id)?.name || `#${id}`
+  void projectName // mantido para uso em features futuras (tooltip, badge)
 
   return (
     <div className="space-y-6">
@@ -279,7 +313,9 @@ export function TransactionsList() {
                   <th className="text-left px-4 py-3 font-medium">Data</th>
                   <th className="text-left px-4 py-3 font-medium">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium">Descrição</th>
+                  <th className="text-left px-4 py-3 font-medium">Categoria</th>
                   <th className="text-left px-4 py-3 font-medium">Projeto</th>
+                  <th className="text-left px-4 py-3 font-medium">Membro</th>
                   <th className="text-right px-4 py-3 font-medium">Valor</th>
                   <th className="text-left px-4 py-3 font-medium">Status</th>
                   <th className="text-center px-4 py-3 font-medium">Ações</th>
@@ -320,7 +356,71 @@ export function TransactionsList() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm">{projectName(t.project_id)}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <select
+                        aria-label={`Categoria da transação ${t.id}`}
+                        value={t.category_id ?? ''}
+                        onChange={(e) =>
+                          quickEdit.mutate({
+                            id: t.id,
+                            patch: { category_id: e.target.value ? Number(e.target.value) : null },
+                          })
+                        }
+                        disabled={quickEdit.isPending}
+                        className="bg-transparent border-0 hover:bg-muted/40 focus:bg-background focus:border focus:rounded px-1 py-0.5 text-sm w-full max-w-[160px]"
+                      >
+                        <option value="">— sem categoria —</option>
+                        {categories
+                          .filter((c) => c.type === t.type)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <select
+                        aria-label={`Projeto da transação ${t.id}`}
+                        value={t.project_id ?? ''}
+                        onChange={(e) =>
+                          quickEdit.mutate({
+                            id: t.id,
+                            patch: { project_id: e.target.value ? Number(e.target.value) : null },
+                          })
+                        }
+                        disabled={quickEdit.isPending}
+                        className="bg-transparent border-0 hover:bg-muted/40 focus:bg-background focus:border focus:rounded px-1 py-0.5 text-sm w-full max-w-[160px]"
+                      >
+                        <option value="">— sem projeto —</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <select
+                        aria-label={`Membro da transação ${t.id}`}
+                        value={t.member_id ?? ''}
+                        onChange={(e) =>
+                          quickEdit.mutate({
+                            id: t.id,
+                            patch: { member_id: e.target.value ? Number(e.target.value) : null },
+                          })
+                        }
+                        disabled={quickEdit.isPending}
+                        className="bg-transparent border-0 hover:bg-muted/40 focus:bg-background focus:border focus:rounded px-1 py-0.5 text-sm w-full max-w-[160px]"
+                      >
+                        <option value="">— sem membro —</option>
+                        {membersSummary.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className={`px-4 py-3 text-right font-medium ${
                       t.type === 'Entrada' ? 'text-green-700' : 'text-red-700'
                     }`}>
