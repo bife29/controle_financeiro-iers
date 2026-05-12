@@ -216,24 +216,16 @@ async def project_dashboard(
     )
     total_spent = expense.scalar()
 
-    # Participantes
-    participants = await db.execute(
-        select(func.count(ParticipantEvent.id))
-        .where(ParticipantEvent.project_id == project_id)
+    # Participantes — usa status DERIVADO (paid_value calculado das Transactions)
+    pes_result = await db.execute(
+        select(ParticipantEvent).where(ParticipantEvent.project_id == project_id)
     )
-    participant_count = participants.scalar()
-
-    paid = await db.execute(
-        select(func.count(ParticipantEvent.id))
-        .where(ParticipantEvent.project_id == project_id, ParticipantEvent.status == "Pago")
-    )
-    paid_count = paid.scalar()
-
-    pending = await db.execute(
-        select(func.count(ParticipantEvent.id))
-        .where(ParticipantEvent.project_id == project_id, ParticipantEvent.status == "Pendente")
-    )
-    pending_count = pending.scalar()
+    pes_list = pes_result.scalars().all()
+    paid_map = await _compute_pe_paid_values(db, pes_list)
+    serialized_pes = [_serialize_pe(pe, paid_map[pe.id]) for pe in pes_list]
+    participant_count = len(serialized_pes)
+    paid_count = sum(1 for s in serialized_pes if s["status"] == "Pago")
+    pending_count = sum(1 for s in serialized_pes if s["status"] == "Pendente")
 
     return ProjectDashboard(
         project=ProjectResponse.model_validate(project),
@@ -618,6 +610,73 @@ async def export_financial_data(
 
 # ============ PARTICIPANT EVENTS ============
 
+async def _compute_pe_paid_values(
+    db: AsyncSession,
+    pes: list[ParticipantEvent],
+) -> dict[int, float]:
+    """Calcula paid_value real por ParticipantEvent agregando Transactions.
+
+    Soma transactions Confirmadas tipo Entrada com mesmo (member_id, project_id).
+    Retorna dict {pe_id: paid_value}.
+    """
+    if not pes:
+        return {}
+    # Agrupa transações por (member_id, project_id) das chaves dos PEs
+    keys = {(pe.member_id, pe.project_id) for pe in pes}
+    sums: dict[tuple[int, int], float] = {}
+    if keys:
+        # Um único query agregado filtrando os pares relevantes
+        member_ids = list({k[0] for k in keys})
+        project_ids = list({k[1] for k in keys})
+        agg_q = (
+            select(
+                Transaction.member_id,
+                Transaction.project_id,
+                func.coalesce(func.sum(Transaction.value), 0),
+            )
+            .where(
+                Transaction.member_id.in_(member_ids),
+                Transaction.project_id.in_(project_ids),
+                Transaction.type == "Entrada",
+                Transaction.status == "Confirmado",
+            )
+            .group_by(Transaction.member_id, Transaction.project_id)
+        )
+        rows = (await db.execute(agg_q)).all()
+        for member_id, project_id, total in rows:
+            sums[(member_id, project_id)] = float(total or 0)
+    return {pe.id: sums.get((pe.member_id, pe.project_id), 0.0) for pe in pes}
+
+
+def _serialize_pe(pe: ParticipantEvent, computed_paid: float) -> dict:
+    """Serializa ParticipantEvent com paid_value/status calculados.
+
+    Regras de status derivado:
+    - "Isento" preserva o valor armazenado (decisão administrativa).
+    - paid >= agreed (e agreed > 0) → "Pago".
+    - paid > 0 → "Parcial".
+    - caso contrário → "Pendente".
+    """
+    stored_status = pe.status or "Pendente"
+    if stored_status == "Isento":
+        derived = "Isento"
+    elif pe.agreed_value > 0 and computed_paid >= pe.agreed_value:
+        derived = "Pago"
+    elif computed_paid > 0:
+        derived = "Parcial"
+    else:
+        derived = "Pendente"
+    return {
+        "id": pe.id,
+        "member_id": pe.member_id,
+        "project_id": pe.project_id,
+        "agreed_value": float(pe.agreed_value or 0),
+        "paid_value": round(computed_paid, 2),
+        "status": derived,
+        "created_at": pe.created_at,
+    }
+
+
 @router.get("/participant-events", response_model=list[ParticipantEventResponse])
 async def list_participant_events(
     project_id: Optional[int] = Query(None),
@@ -628,10 +687,13 @@ async def list_participant_events(
     query = select(ParticipantEvent)
     if project_id:
         query = query.where(ParticipantEvent.project_id == project_id)
-    if status:
-        query = query.where(ParticipantEvent.status == status)
     result = await db.execute(query)
-    return result.scalars().all()
+    pes = result.scalars().all()
+    paid_map = await _compute_pe_paid_values(db, pes)
+    serialized = [_serialize_pe(pe, paid_map[pe.id]) for pe in pes]
+    if status:
+        serialized = [s for s in serialized if s["status"] == status]
+    return serialized
 
 
 @router.post("/participant-events", response_model=ParticipantEventResponse)
@@ -644,7 +706,8 @@ async def create_participant_event(
     db.add(pe)
     await db.flush()
     await db.refresh(pe)
-    return pe
+    paid_map = await _compute_pe_paid_values(db, [pe])
+    return _serialize_pe(pe, paid_map[pe.id])
 
 
 @router.put("/participant-events/{pe_id}", response_model=ParticipantEventResponse)
@@ -659,11 +722,19 @@ async def update_participant_event(
     if not pe:
         raise HTTPException(status_code=404, detail="Participante não encontrado")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    # paid_value passou a ser calculado a partir das Transactions vinculadas
+    # ao par (member_id, project_id). O campo no payload é ignorado para
+    # manter o sistema com fonte única de verdade.
+    payload.pop("paid_value", None)
+    # status "Isento" pode ser definido manualmente; demais valores são derivados
+    # automaticamente em _serialize_pe e o que vier no payload é apenas registrado.
+    for field, value in payload.items():
         setattr(pe, field, value)
     await db.flush()
     await db.refresh(pe)
-    return pe
+    paid_map = await _compute_pe_paid_values(db, [pe])
+    return _serialize_pe(pe, paid_map[pe.id])
 
 
 @router.delete("/participant-events/{pe_id}")
@@ -746,12 +817,19 @@ async def financial_dashboard(
     forecast_out = float(fc_out_row[0] or 0)
     forecast_out_count = int(fc_out_row[1] or 0)
 
-    # Contas a receber pendentes (parcelas de retiro)
-    receivables = await db.execute(
-        select(func.coalesce(func.sum(ParticipantEvent.agreed_value - ParticipantEvent.paid_value), 0))
-        .where(ParticipantEvent.status == "Pendente")
-    )
-    pending_receivables = receivables.scalar()
+    # Contas a receber pendentes — soma (agreed_value - paid_calculado) de
+    # ParticipantEvents não Isentos. paid_calculado vem das Transactions
+    # vinculadas (member_id+project_id), que é a fonte única de verdade.
+    pes_all = (
+        await db.execute(select(ParticipantEvent).where(ParticipantEvent.status != "Isento"))
+    ).scalars().all()
+    paid_map_all = await _compute_pe_paid_values(db, pes_all)
+    pending_receivables = 0.0
+    for pe in pes_all:
+        outstanding = float(pe.agreed_value or 0) - paid_map_all.get(pe.id, 0.0)
+        if outstanding > 0:
+            pending_receivables += outstanding
+    pending_receivables = round(pending_receivables, 2)
 
     return FinancialSummary(
         total_income=total_income,
