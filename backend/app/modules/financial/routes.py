@@ -3,7 +3,7 @@ import io
 import re
 import tempfile
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete as sa_delete
@@ -250,6 +250,7 @@ async def project_dashboard(
 
 @router.get("/transactions", response_model=list[TransactionResponse])
 async def list_transactions(
+    response: Response,
     project_id: Optional[int] = Query(None),
     type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
@@ -260,18 +261,30 @@ async def list_transactions(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
 ):
-    query = select(Transaction)
+    """Lista transações com paginação.
+
+    Retorna o total de registros que casam com os filtros via header HTTP
+    `X-Total-Count` (exposto por CORS) para que o frontend possa renderizar
+    paginação clássica (Página N de M).
+    """
+    base = select(Transaction)
     if project_id:
-        query = query.where(Transaction.project_id == project_id)
+        base = base.where(Transaction.project_id == project_id)
     if type:
-        query = query.where(Transaction.type == type)
+        base = base.where(Transaction.type == type)
     if status:
-        query = query.where(Transaction.status == status)
+        base = base.where(Transaction.status == status)
     if start_date:
-        query = query.where(Transaction.date >= start_date)
+        base = base.where(Transaction.date >= start_date)
     if end_date:
-        query = query.where(Transaction.date <= end_date)
-    query = query.order_by(Transaction.date.desc()).offset(skip).limit(limit)
+        base = base.where(Transaction.date <= end_date)
+
+    # total (mesmos filtros, sem offset/limit)
+    total_q = select(func.count()).select_from(base.subquery())
+    total = (await db.execute(total_q)).scalar() or 0
+    response.headers["X-Total-Count"] = str(total)
+
+    query = base.order_by(Transaction.date.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 

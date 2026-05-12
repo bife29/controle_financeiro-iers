@@ -257,6 +257,85 @@ test.describe("Módulo Financeiro - Transações", () => {
 
     await request.delete(`/api/financial/transactions/${tx.id}`, { headers });
   });
+
+  // Regressão Bug 4 (paginação): backend deve retornar header X-Total-Count
+  // e respeitar skip/limit. O bug original era que a UI ficava limitada a 100
+  // itens (default) e nem mostrava controles de Próximo/Anterior, escondendo
+  // qualquer transação após a 100ª posição.
+  test("GET /api/financial/transactions devolve X-Total-Count + respeita skip/limit", async ({ request }) => {
+    const catsResp = await request.get("/api/financial/categories", { headers });
+    const entradaCat = (await catsResp.json()).find((c: any) => c.type === "Entrada");
+    const projsResp = await request.get("/api/financial/projects", { headers });
+    const projectId = (await projsResp.json())[0].id;
+
+    // Cria projeto isolado para que a contagem seja determinística
+    const projResp = await request.post("/api/financial/projects", {
+      headers,
+      data: {
+        name: tag(`Pag ${Date.now()}`),
+        description: tag("Paginação"),
+        start_date: "2026-01-01",
+      },
+    });
+    const isoProj = await projResp.json();
+
+    const created: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await request.post("/api/financial/transactions", {
+        headers,
+        data: {
+          date: "2026-05-01",
+          description: tag(`Pag-${i}`),
+          value: 10 + i,
+          type: "Entrada",
+          category_id: entradaCat.id,
+          project_id: isoProj.id,
+          status: "Confirmado",
+          payment_date: "2026-05-01",
+        },
+      });
+      created.push((await r.json()).id);
+    }
+
+    // página 1 (skip=0,limit=2) → 2 itens, total=5
+    const p1 = await request.get(
+      `/api/financial/transactions?project_id=${isoProj.id}&skip=0&limit=2`,
+      { headers }
+    );
+    expect(p1.ok()).toBeTruthy();
+    expect(p1.headers()["x-total-count"]).toBe("5");
+    expect((await p1.json()).length).toBe(2);
+
+    // página 2 (skip=2,limit=2) → 2 itens
+    const p2 = await request.get(
+      `/api/financial/transactions?project_id=${isoProj.id}&skip=2&limit=2`,
+      { headers }
+    );
+    expect(p2.ok()).toBeTruthy();
+    expect(p2.headers()["x-total-count"]).toBe("5");
+    expect((await p2.json()).length).toBe(2);
+
+    // página 3 (skip=4,limit=2) → 1 item (resto)
+    const p3 = await request.get(
+      `/api/financial/transactions?project_id=${isoProj.id}&skip=4&limit=2`,
+      { headers }
+    );
+    expect(p3.ok()).toBeTruthy();
+    expect(p3.headers()["x-total-count"]).toBe("5");
+    expect((await p3.json()).length).toBe(1);
+
+    // Páginas não devem se sobrepor
+    const ids1 = (await p1.json()).map((t: any) => t.id);
+    const ids2 = (await p2.json()).map((t: any) => t.id);
+    expect(ids1.some((id: number) => ids2.includes(id))).toBeFalsy();
+
+    // cleanup
+    for (const id of created) {
+      await request.delete(`/api/financial/transactions/${id}`, { headers });
+    }
+    await request.delete(`/api/financial/projects/${isoProj.id}`, { headers });
+    void projectId; // suppress unused
+  });
 });
 
 test.describe("Módulo Financeiro - Dashboard", () => {

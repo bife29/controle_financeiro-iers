@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download, CheckCircle2 } from 'lucide-react'
+import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface Transaction {
   id: number
@@ -31,6 +31,10 @@ export function TransactionsList() {
   const [filterType, setFilterType] = useState(searchParams.get('type') || '')
   const [filterProject, setFilterProject] = useState(searchParams.get('project_id') || '')
   const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '')
+  const [page, setPage] = useState<number>(Math.max(1, Number(searchParams.get('page') || 1)))
+  const [pageSize, setPageSize] = useState<number>(
+    Math.min(500, Math.max(10, Number(searchParams.get('page_size') || 50)))
+  )
   const [deleteConfirm, setDeleteConfirm] = useState<Transaction | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false)
@@ -44,8 +48,15 @@ export function TransactionsList() {
     if (filterType) next.set('type', filterType)
     if (filterStatus) next.set('status', filterStatus)
     if (filterProject) next.set('project_id', filterProject)
+    if (page > 1) next.set('page', String(page))
+    if (pageSize !== 50) next.set('page_size', String(pageSize))
     setSearchParams(next, { replace: true })
-  }, [filterType, filterStatus, filterProject, setSearchParams])
+  }, [filterType, filterStatus, filterProject, page, pageSize, setSearchParams])
+
+  // Reset à página 1 sempre que filtros mudarem
+  useEffect(() => {
+    setPage(1)
+  }, [filterType, filterStatus, filterProject, pageSize])
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -53,16 +64,28 @@ export function TransactionsList() {
   })
 
   const buildParams = () => {
-    const params: Record<string, string> = {}
+    const params: Record<string, string | number> = {
+      skip: (page - 1) * pageSize,
+      limit: pageSize,
+    }
     if (filterType) params.type = filterType
     if (filterProject) params.project_id = filterProject
+    if (filterStatus) params.status = filterStatus
     return params
   }
 
-  const { data: transactions = [], isLoading } = useQuery<Transaction[]>({
-    queryKey: ['transactions', filterType, filterProject],
-    queryFn: () => api.get('/api/financial/transactions', { params: buildParams() }).then((r) => r.data),
+  const { data: txQuery, isLoading } = useQuery({
+    queryKey: ['transactions', filterType, filterProject, filterStatus, page, pageSize],
+    queryFn: async () => {
+      const r = await api.get('/api/financial/transactions', { params: buildParams() })
+      const total = Number(r.headers['x-total-count'] ?? r.headers['X-Total-Count'] ?? r.data.length)
+      return { items: r.data as Transaction[], total }
+    },
+    placeholderData: (prev) => prev,
   })
+  const transactions = txQuery?.items ?? []
+  const totalCount = txQuery?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   const deleteTransaction = useMutation({
     mutationFn: (id: number) => api.delete(`/api/financial/transactions/${id}`),
@@ -98,10 +121,9 @@ export function TransactionsList() {
 
   const filtered = transactions.filter(
     (t) =>
-      (!search ||
-        (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
-        t.value.toString().includes(search)) &&
-      (!filterStatus || t.status === filterStatus)
+      !search ||
+      (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
+      t.value.toString().includes(search)
   )
 
   const toggleSelect = (id: number) => {
@@ -153,7 +175,8 @@ export function TransactionsList() {
           <div>
             <h1 className="text-2xl font-bold">Transações</h1>
             <p className="text-sm text-muted-foreground">
-              {filtered.length} lançamento{filtered.length !== 1 ? 's' : ''}
+              {totalCount} lançamento{totalCount !== 1 ? 's' : ''}
+              {totalPages > 1 && ` • Página ${page} de ${totalPages}`}
               {selected.size > 0 && ` • ${selected.size} selecionado${selected.size !== 1 ? 's' : ''}`}
             </p>
           </div>
@@ -344,6 +367,73 @@ export function TransactionsList() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Paginação */}
+      {totalCount > 0 && (
+        <div
+          data-testid="transactions-pagination"
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm"
+        >
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>
+              Mostrando <strong>{(page - 1) * pageSize + 1}</strong>–
+              <strong>{Math.min(page * pageSize, totalCount)}</strong> de{' '}
+              <strong>{totalCount}</strong>
+            </span>
+            <select
+              aria-label="Itens por página"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="ml-2 px-2 py-1 border rounded"
+            >
+              {[25, 50, 100, 200, 500].map((n) => (
+                <option key={n} value={n}>{n}/pg</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              className="px-2 py-1 border rounded disabled:opacity-40"
+              aria-label="Primeira página"
+            >
+              «
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              data-testid="pagination-prev"
+              className="inline-flex items-center gap-1 px-3 py-1 border rounded disabled:opacity-40"
+            >
+              <ChevronLeft className="w-4 h-4" /> Anterior
+            </button>
+            <span data-testid="pagination-info" className="px-2">
+              Página {page} de {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              data-testid="pagination-next"
+              className="inline-flex items-center gap-1 px-3 py-1 border rounded disabled:opacity-40"
+            >
+              Próxima <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              className="px-2 py-1 border rounded disabled:opacity-40"
+              aria-label="Última página"
+            >
+              »
+            </button>
           </div>
         </div>
       )}
