@@ -496,7 +496,7 @@ async def update_recurring_group(
             setattr(tx, field, value)
 
     log = AuditLog(
-        action="update_recurring_group",
+        action="upd_recur_group",
         entity="Transaction",
         entity_id=txs[0].id,
         user_id=current_user.id,
@@ -538,7 +538,7 @@ async def delete_recurring_group(
         await db.delete(tx)
 
     log = AuditLog(
-        action="delete_recurring_group",
+        action="del_recur_group",
         entity="Transaction",
         entity_id=deleted_ids[0],
         user_id=current_user.id,
