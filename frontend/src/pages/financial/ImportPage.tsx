@@ -108,6 +108,7 @@ export function ImportPage() {
   const [bankOrigin, setBankOrigin] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [skipDuplicates, setSkipDuplicates] = useState(false)
+  const [duplicateDays, setDuplicateDays] = useState<number>(3)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -193,6 +194,7 @@ export function ImportPage() {
       if (skipDuplicates) {
         formData.append('skip_duplicates', 'true')
       }
+      formData.append('duplicate_days', String(duplicateDays))
 
       const response = await api.post('/api/financial/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -421,7 +423,7 @@ export function ImportPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <label className="flex items-center gap-2 cursor-pointer text-sm">
             <input
               type="checkbox"
@@ -430,6 +432,20 @@ export function ImportPage() {
               className="w-4 h-4 rounded border-gray-300"
             />
             Ignorar duplicidades (importar tudo)
+          </label>
+          <label className="flex items-center gap-2 text-sm" title="Janela em dias usada para casar lançamentos do extrato com Previstos e detectar duplicatas. Padrão 3 dias.">
+            Tolerância (dias) p/ casar:
+            <input
+              type="number"
+              min={0}
+              max={30}
+              value={duplicateDays}
+              onChange={(e) =>
+                setDuplicateDays(Math.max(0, Math.min(30, Number(e.target.value) || 0)))
+              }
+              data-testid="import-duplicate-days"
+              className="w-16 px-2 py-1 border rounded text-sm"
+            />
           </label>
         </div>
 

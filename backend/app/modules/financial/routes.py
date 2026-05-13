@@ -1249,6 +1249,10 @@ async def import_transactions(
     bank_origin: Optional[str] = Form(None),
     type_filter: Optional[str] = Form(None),
     skip_duplicates: Optional[bool] = Form(False),
+    duplicate_days: int = Form(
+        3, ge=0, le=30,
+        description="Tolerancia em dias para casar com Previstos e detectar duplicatas (0..30, default 3)",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("super_admin", "financeiro"))
 ):
@@ -1363,8 +1367,8 @@ async def import_transactions(
         (datetime.strptime(tx["date"], "%Y-%m-%d").date() if isinstance(tx["date"], str) else tx["date"])
         for tx in preview
     ]
-    min_d = min(preview_dates) - timedelta(days=3)
-    max_d = max(preview_dates) + timedelta(days=3)
+    min_d = min(preview_dates) - timedelta(days=duplicate_days)
+    max_d = max(preview_dates) + timedelta(days=duplicate_days)
 
     candidate_q = select(Transaction).where(
         Transaction.date >= min_d, Transaction.date <= max_d
@@ -1409,7 +1413,7 @@ async def import_transactions(
             and c.id not in used_previstos
             and c.type == tx["type"]
             and round(c.value, 2) == round(tx["value"], 2)
-            and abs((c.date - tx_date).days) <= 3
+            and abs((c.date - tx_date).days) <= duplicate_days
         ]
 
         if len(previstos_match) == 1:
@@ -1438,7 +1442,7 @@ async def import_transactions(
                 continue
             if round(ex.value, 2) != round(tx["value"], 2):
                 continue
-            if abs((ex.date - tx_date).days) > 3:
+            if abs((ex.date - tx_date).days) > duplicate_days:
                 continue
             ex_desc = (ex.description or "").strip().lower()
             tx_desc = (tx["description"] or "").strip().lower()
