@@ -189,6 +189,8 @@ async def report_by_category(
     project_id: Optional[int] = Query(None),
     category_id: Optional[int] = Query(None),
     member_id: Optional[int] = Query(None),
+    mode: str = Query("analytic", pattern="^(analytic|synthetic)$",
+                      description="analytic = lista cada lançamento; synthetic = só totais por categoria"),
     format: str = Query("pdf"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(auth_dep),
@@ -209,6 +211,51 @@ async def report_by_category(
     for t in txs:
         key = t.category.name if t.category else "(Sem categoria)"
         grouped[key].append(t)
+
+    # ---- modo SINTÉTICO: uma linha por categoria com totais ----
+    if mode == "synthetic":
+        synth_columns = [
+            ("Categoria", "category", "left"),
+            ("Qtd", "qty", "center"),
+            ("Entradas", "income", "right"),
+            ("Saídas", "expense", "right"),
+            ("Saldo", "balance", "right"),
+        ]
+        synth_rows = []
+        gt_in = gt_out = 0.0
+        for cat_name in sorted(grouped.keys()):
+            items = grouped[cat_name]
+            inc = sum(t.value for t in items if t.type == "Entrada")
+            exp = sum(t.value for t in items if t.type == "Saída")
+            gt_in += inc
+            gt_out += exp
+            synth_rows.append({
+                "category": cat_name,
+                "qty": len(items),
+                "income": round(inc, 2),
+                "expense": round(exp, 2),
+                "balance": round(inc - exp, 2),
+            })
+        synth_totals = {
+            "category": "TOTAL GERAL",
+            "qty": sum(len(v) for v in grouped.values()),
+            "income": round(gt_in, 2),
+            "expense": round(gt_out, 2),
+            "balance": round(gt_in - gt_out, 2),
+        }
+        subtitle = (
+            f"{_period_subtitle(start, end)} • Tipo: {type or 'Todos'} • "
+            f"Status: {status or 'Todos'} • Modo: Sintético"
+        )
+        return _build(
+            format,
+            title="Relatório por Categoria (Sintético)",
+            subtitle=subtitle,
+            columns=synth_columns,
+            rows=synth_rows,
+            totals=synth_totals,
+            filename_base="relatorio-por-categoria-sintetico",
+        )
 
     columns = [
         ("Data", "date", "center"),
@@ -276,6 +323,8 @@ async def report_by_project(
     type: Optional[str] = Query(None, description="Entrada / Saída / vazio = ambos"),
     category_id: Optional[int] = Query(None),
     member_id: Optional[int] = Query(None),
+    mode: str = Query("analytic", pattern="^(analytic|synthetic)$",
+                      description="analytic = lista cada lançamento; synthetic = só totais por projeto"),
     format: str = Query("pdf"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(auth_dep),
@@ -295,6 +344,50 @@ async def report_by_project(
     for t in txs:
         key = t.project.name if t.project else "(Sem projeto)"
         grouped[key].append(t)
+
+    # ---- modo SINTÉTICO: uma linha por projeto ----
+    if mode == "synthetic":
+        synth_columns = [
+            ("Projeto/Evento", "project", "left"),
+            ("Qtd", "qty", "center"),
+            ("Entradas", "income", "right"),
+            ("Saídas", "expense", "right"),
+            ("Saldo", "balance", "right"),
+        ]
+        synth_rows = []
+        gt_in = gt_out = 0.0
+        for proj_name in sorted(grouped.keys()):
+            items = grouped[proj_name]
+            inc = sum(t.value for t in items if t.type == "Entrada")
+            exp = sum(t.value for t in items if t.type == "Saída")
+            gt_in += inc
+            gt_out += exp
+            synth_rows.append({
+                "project": proj_name,
+                "qty": len(items),
+                "income": round(inc, 2),
+                "expense": round(exp, 2),
+                "balance": round(inc - exp, 2),
+            })
+        synth_totals = {
+            "project": "TOTAL GERAL",
+            "qty": sum(len(v) for v in grouped.values()),
+            "income": round(gt_in, 2),
+            "expense": round(gt_out, 2),
+            "balance": round(gt_in - gt_out, 2),
+        }
+        subtitle = (
+            f"{_period_subtitle(start, end)} • Status: {status or 'Todos'} • Modo: Sintético"
+        )
+        return _build(
+            format,
+            title="Relatório por Projeto / Evento (Sintético)",
+            subtitle=subtitle,
+            columns=synth_columns,
+            rows=synth_rows,
+            totals=synth_totals,
+            filename_base="relatorio-por-projeto-sintetico",
+        )
 
     columns = [
         ("Data", "date", "center"),

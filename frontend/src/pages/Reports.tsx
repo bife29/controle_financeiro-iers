@@ -12,7 +12,7 @@ interface ReportDef {
   title: string
   description: string
   icon: typeof FileText
-  fields: Array<'period' | 'type' | 'status' | 'project' | 'member' | 'category'>
+  fields: Array<'period' | 'type' | 'status' | 'project' | 'member' | 'category' | 'mode'>
   defaultStatus?: string
   endpoint: string
 }
@@ -32,7 +32,7 @@ const REPORTS: ReportDef[] = [
     title: 'Por Categoria',
     description: 'Lançamentos agrupados por categoria, com subtotal de cada uma e total geral.',
     icon: Tags,
-    fields: ['period', 'type', 'status', 'category', 'project', 'member'],
+    fields: ['period', 'type', 'status', 'category', 'project', 'member', 'mode'],
     defaultStatus: 'Confirmado',
     endpoint: '/api/reports/by-category',
   },
@@ -41,7 +41,7 @@ const REPORTS: ReportDef[] = [
     title: 'Por Projeto / Evento',
     description: 'Movimentação financeira por projeto/evento, com saldo individual.',
     icon: Mountain,
-    fields: ['period', 'project', 'status', 'type', 'category', 'member'],
+    fields: ['period', 'project', 'status', 'type', 'category', 'member', 'mode'],
     defaultStatus: 'Confirmado',
     endpoint: '/api/reports/by-project',
   },
@@ -81,6 +81,7 @@ export function ReportsPage() {
   const [projectId, setProjectId] = useState('')
   const [memberId, setMemberId] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const [mode, setMode] = useState<'analytic' | 'synthetic'>('analytic')
   const [downloading, setDownloading] = useState<'pdf' | 'xlsx' | 'preview' | null>(null)
   const [error, setError] = useState('')
 
@@ -117,6 +118,7 @@ export function ReportsPage() {
     if (def.fields.includes('project') && projectId) params.project_id = projectId
     if (def.fields.includes('member') && memberId) params.member_id = memberId
     if (def.fields.includes('category') && categoryId) params.category_id = categoryId
+    if (def.fields.includes('mode')) params.mode = mode
     return params
   }
 
@@ -321,6 +323,21 @@ export function ReportsPage() {
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
+              </select>
+            </div>
+          )}
+
+          {def.fields.includes('mode') && (
+            <div>
+              <label className="text-xs text-muted-foreground">Modo</label>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as 'analytic' | 'synthetic')}
+                data-testid="report-mode"
+                className="mt-1 w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="analytic">Analítico (lista lançamentos)</option>
+                <option value="synthetic">Sintético (só totais)</option>
               </select>
             </div>
           )}
