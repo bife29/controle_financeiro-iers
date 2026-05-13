@@ -68,6 +68,22 @@ export function DashboardPage() {
     enabled: canSeeFinancial,
   })
 
+  const { data: pendingMonthly } = useQuery<{
+    month: string
+    receivable: number
+    payable: number
+    balance: number
+    receivable_count: number
+    payable_count: number
+  }[]>({
+    queryKey: ['charts-pending-monthly', selectedProject],
+    queryFn: () =>
+      api
+        .get('/api/financial/charts/pending-monthly', { params: { project_id: selectedProject, months: 6 } })
+        .then((r) => r.data),
+    enabled: canSeeFinancial,
+  })
+
   const { data: paymentMethodData } = useQuery<{ name: string; value: number; count: number }[]>({
     queryKey: ['charts-by-payment-method', selectedProject],
     queryFn: () => api.get('/api/financial/charts/by-payment-method', { params: { project_id: selectedProject } }).then((r) => r.data),
@@ -184,6 +200,79 @@ export function DashboardPage() {
             <p className="text-xl font-bold text-orange-700 mt-1">
               {formatCurrency(summary.pending_payables)}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Totalizador mensal CP/CR (Ajuste 8) */}
+      {canSeeFinancial && pendingMonthly && pendingMonthly.length > 0 &&
+        pendingMonthly.some((m) => m.payable > 0 || m.receivable > 0) && (
+        <div className="bg-card border rounded-xl p-4" data-testid="pending-monthly-panel">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">Pendências por mês — Próximos 6 meses</h3>
+            <span className="text-xs text-muted-foreground">CP = Contas a Pagar • CR = Contas a Receber</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">Mês</th>
+                  <th className="px-3 py-2 font-medium text-right">CR (a receber)</th>
+                  <th className="px-3 py-2 font-medium text-right">CP (a pagar)</th>
+                  <th className="px-3 py-2 font-medium text-right">Saldo previsto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMonthly.map((m) => (
+                  <tr key={m.month} className="border-b last:border-0">
+                    <td className="px-3 py-2 font-medium">{m.month}</td>
+                    <td className="px-3 py-2 text-right text-amber-700">
+                      {formatCurrency(m.receivable)}
+                      {m.receivable_count > 0 && (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({m.receivable_count})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-orange-700">
+                      {formatCurrency(m.payable)}
+                      {m.payable_count > 0 && (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({m.payable_count})
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-3 py-2 text-right font-medium',
+                        m.balance >= 0 ? 'text-emerald-700' : 'text-red-700'
+                      )}
+                    >
+                      {formatCurrency(m.balance)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-muted/40 font-semibold">
+                  <td className="px-3 py-2">Total</td>
+                  <td className="px-3 py-2 text-right text-amber-800">
+                    {formatCurrency(pendingMonthly.reduce((s, x) => s + x.receivable, 0))}
+                  </td>
+                  <td className="px-3 py-2 text-right text-orange-800">
+                    {formatCurrency(pendingMonthly.reduce((s, x) => s + x.payable, 0))}
+                  </td>
+                  <td
+                    className={cn(
+                      'px-3 py-2 text-right',
+                      pendingMonthly.reduce((s, x) => s + x.balance, 0) >= 0
+                        ? 'text-emerald-800'
+                        : 'text-red-800'
+                    )}
+                  >
+                    {formatCurrency(pendingMonthly.reduce((s, x) => s + x.balance, 0))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       )}

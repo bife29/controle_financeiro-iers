@@ -893,6 +893,88 @@ async def chart_monthly(
     return list(months_map.values())
 
 
+@router.get("/charts/pending-monthly")
+async def chart_pending_monthly(
+    months: int = Query(6, ge=1, le=24,
+                        description="Quantos meses para frente a partir do mês atual"),
+    project_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("super_admin", "financeiro", "pastor"))
+):
+    """Totalizador mensal de Contas a Pagar (CP) e Contas a Receber (CR).
+
+    Soma o valor dos lançamentos com status=Previsto agrupados pelo mês
+    de vencimento (campo date), considerando do mês atual até `months`-1
+    meses à frente. Devolve sempre todos os meses do intervalo (mesmo
+    com total zero) para facilitar consumo na UI.
+    """
+    today = date.today()
+    start = date(today.year, today.month, 1)
+    # último mês incluído
+    last_year = today.year + (today.month - 1 + months - 1) // 12
+    last_month = (today.month - 1 + months - 1) % 12 + 1
+    end_month_first = date(last_year, last_month, 1)
+    # primeiro dia do mês seguinte ao último
+    if last_month == 12:
+        horizon = date(last_year + 1, 1, 1)
+    else:
+        horizon = date(last_year, last_month + 1, 1)
+
+    month_col = _month_expr(Transaction.date)
+    query = select(
+        month_col.label('month'),
+        Transaction.type,
+        func.coalesce(func.sum(Transaction.value), 0).label('total'),
+        func.count(Transaction.id).label('count'),
+    ).where(
+        Transaction.status == "Previsto",
+        Transaction.date >= start,
+        Transaction.date < horizon,
+    )
+    if project_id:
+        query = query.where(Transaction.project_id == project_id)
+    query = query.group_by(month_col, Transaction.type).order_by(month_col)
+
+    rows = (await db.execute(query)).all()
+
+    # Inicializa todos os meses do intervalo com zero
+    months_map: dict[str, dict] = {}
+    cursor_year, cursor_month = start.year, start.month
+    for _ in range(months):
+        key = f"{cursor_year:04d}-{cursor_month:02d}"
+        months_map[key] = {
+            "month": key,
+            "receivable": 0.0,
+            "payable": 0.0,
+            "balance": 0.0,
+            "receivable_count": 0,
+            "payable_count": 0,
+        }
+        cursor_month += 1
+        if cursor_month > 12:
+            cursor_month = 1
+            cursor_year += 1
+
+    for row in rows:
+        bucket = months_map.setdefault(row.month, {
+            "month": row.month,
+            "receivable": 0.0,
+            "payable": 0.0,
+            "balance": 0.0,
+            "receivable_count": 0,
+            "payable_count": 0,
+        })
+        if row.type == "Entrada":
+            bucket["receivable"] = round(float(row.total), 2)
+            bucket["receivable_count"] = int(row.count)
+        else:
+            bucket["payable"] = round(float(row.total), 2)
+            bucket["payable_count"] = int(row.count)
+        bucket["balance"] = round(bucket["receivable"] - bucket["payable"], 2)
+
+    return sorted(months_map.values(), key=lambda x: x["month"])
+
+
 @router.get("/charts/by-project")
 async def chart_by_project(
     start_date: Optional[date] = Query(None),
