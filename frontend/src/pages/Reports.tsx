@@ -12,7 +12,7 @@ interface ReportDef {
   title: string
   description: string
   icon: typeof FileText
-  fields: Array<'period' | 'type' | 'status' | 'project' | 'member'>
+  fields: Array<'period' | 'type' | 'status' | 'project' | 'member' | 'category'>
   defaultStatus?: string
   endpoint: string
 }
@@ -23,7 +23,7 @@ const REPORTS: ReportDef[] = [
     title: 'Livro Caixa',
     description: 'Listagem cronológica de transações do período com totais de Entradas e Saídas.',
     icon: BookOpen,
-    fields: ['period', 'status'],
+    fields: ['period', 'status', 'type', 'category', 'project', 'member'],
     defaultStatus: 'Confirmado',
     endpoint: '/api/reports/cashbook',
   },
@@ -32,7 +32,7 @@ const REPORTS: ReportDef[] = [
     title: 'Por Categoria',
     description: 'Lançamentos agrupados por categoria, com subtotal de cada uma e total geral.',
     icon: Tags,
-    fields: ['period', 'type', 'status'],
+    fields: ['period', 'type', 'status', 'category', 'project', 'member'],
     defaultStatus: 'Confirmado',
     endpoint: '/api/reports/by-category',
   },
@@ -41,7 +41,7 @@ const REPORTS: ReportDef[] = [
     title: 'Por Projeto / Evento',
     description: 'Movimentação financeira por projeto/evento, com saldo individual.',
     icon: Mountain,
-    fields: ['period', 'project', 'status'],
+    fields: ['period', 'project', 'status', 'type', 'category', 'member'],
     defaultStatus: 'Confirmado',
     endpoint: '/api/reports/by-project',
   },
@@ -58,7 +58,7 @@ const REPORTS: ReportDef[] = [
     title: 'Contas a Pagar e a Receber',
     description: 'Listagem dos lançamentos Previstos por período (Entradas a receber e Saídas a pagar).',
     icon: CalendarClock,
-    fields: ['period', 'type'],
+    fields: ['period', 'type', 'category', 'project', 'member'],
     endpoint: '/api/reports/payables-receivables',
   },
 ]
@@ -80,6 +80,7 @@ export function ReportsPage() {
   const [status, setStatus] = useState(def.defaultStatus ?? '')
   const [projectId, setProjectId] = useState('')
   const [memberId, setMemberId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
   const [downloading, setDownloading] = useState<'pdf' | 'xlsx' | 'preview' | null>(null)
   const [error, setError] = useState('')
 
@@ -99,6 +100,11 @@ export function ReportsPage() {
     queryFn: () => api.get('/api/members/summary').then((r) => r.data),
     enabled: def.fields.includes('member'),
   })
+  const { data: categories = [] } = useQuery<SimpleOption[]>({
+    queryKey: ['reports-categories'],
+    queryFn: () => api.get('/api/financial/categories').then((r) => r.data),
+    enabled: def.fields.includes('category'),
+  })
 
   function buildParams(fmt: 'pdf' | 'xlsx'): Record<string, string> {
     const params: Record<string, string> = { format: fmt }
@@ -110,6 +116,7 @@ export function ReportsPage() {
     if (def.fields.includes('status') && status) params.status = status
     if (def.fields.includes('project') && projectId) params.project_id = projectId
     if (def.fields.includes('member') && memberId) params.member_id = memberId
+    if (def.fields.includes('category') && categoryId) params.category_id = categoryId
     return params
   }
 
@@ -296,6 +303,23 @@ export function ReportsPage() {
                 <option value="">Todos</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {def.fields.includes('category') && (
+            <div>
+              <label className="text-xs text-muted-foreground">Categoria</label>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                data-testid="report-category"
+                className="mt-1 w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Todas</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>

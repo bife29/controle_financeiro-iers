@@ -105,11 +105,24 @@ async def report_cashbook(
     start: Optional[date] = Query(None),
     end: Optional[date] = Query(None),
     status: Optional[str] = Query("Confirmado"),
+    type: Optional[str] = Query(None, description="Entrada / Saída / vazio = ambos"),
+    project_id: Optional[int] = Query(None),
+    category_id: Optional[int] = Query(None),
+    member_id: Optional[int] = Query(None),
     format: str = Query("pdf"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(auth_dep),
 ):
-    txs = await _filter_transactions(db, start=start, end=end, status=status or None)
+    txs = await _filter_transactions(
+        db,
+        start=start,
+        end=end,
+        status=status or None,
+        type_=type,
+        project_id=project_id,
+        category_id=category_id,
+        member_id=member_id,
+    )
 
     columns = [
         ("Data", "date", "center"),
@@ -173,11 +186,23 @@ async def report_by_category(
     end: Optional[date] = Query(None),
     type: Optional[str] = Query(None, description="Entrada / Saída / vazio = ambos"),
     status: Optional[str] = Query("Confirmado"),
+    project_id: Optional[int] = Query(None),
+    category_id: Optional[int] = Query(None),
+    member_id: Optional[int] = Query(None),
     format: str = Query("pdf"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(auth_dep),
 ):
-    txs = await _filter_transactions(db, start=start, end=end, type_=type, status=status or None)
+    txs = await _filter_transactions(
+        db,
+        start=start,
+        end=end,
+        type_=type,
+        status=status or None,
+        project_id=project_id,
+        category_id=category_id,
+        member_id=member_id,
+    )
 
     # agrupa por categoria
     grouped: dict[str, list[Transaction]] = defaultdict(list)
@@ -248,11 +273,23 @@ async def report_by_project(
     end: Optional[date] = Query(None),
     project_id: Optional[int] = Query(None),
     status: Optional[str] = Query("Confirmado"),
+    type: Optional[str] = Query(None, description="Entrada / Saída / vazio = ambos"),
+    category_id: Optional[int] = Query(None),
+    member_id: Optional[int] = Query(None),
     format: str = Query("pdf"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(auth_dep),
 ):
-    txs = await _filter_transactions(db, start=start, end=end, project_id=project_id, status=status or None)
+    txs = await _filter_transactions(
+        db,
+        start=start,
+        end=end,
+        project_id=project_id,
+        status=status or None,
+        type_=type,
+        category_id=category_id,
+        member_id=member_id,
+    )
 
     grouped: dict[str, list[Transaction]] = defaultdict(list)
     for t in txs:
@@ -422,11 +459,23 @@ async def report_payables_receivables(
     start: Optional[date] = Query(None),
     end: Optional[date] = Query(None),
     type: Optional[str] = Query(None, description="Entrada (a receber) / Saída (a pagar) / vazio = ambos"),
+    project_id: Optional[int] = Query(None),
+    category_id: Optional[int] = Query(None),
+    member_id: Optional[int] = Query(None),
     format: str = Query("pdf"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(auth_dep),
 ):
-    txs = await _filter_transactions(db, start=start, end=end, type_=type, status="Previsto")
+    txs = await _filter_transactions(
+        db,
+        start=start,
+        end=end,
+        type_=type,
+        status="Previsto",
+        project_id=project_id,
+        category_id=category_id,
+        member_id=member_id,
+    )
 
     columns = [
         ("Vencimento", "date", "center"),
