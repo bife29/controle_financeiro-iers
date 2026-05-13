@@ -455,6 +455,103 @@ async def delete_transaction(
     return {"detail": "Transação excluída"}
 
 
+# ----- Edição/exclusão em LOTE de transações recorrentes -----
+
+@router.put("/transactions/recurring/{group_id}", response_model=list[TransactionResponse])
+async def update_recurring_group(
+    group_id: str,
+    data: TransactionUpdate,
+    from_date: Optional[date] = Query(
+        None,
+        description="Se informado, atualiza somente as transações do grupo "
+                    "com date >= from_date (edita 'esta e as futuras').",
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_permission("financeiro", "edit"))
+):
+    """Atualiza várias transações do mesmo grupo de recorrência.
+
+    Use `from_date` para limitar à transação corrente e às futuras.
+    Sem `from_date`, todas as transações do grupo são atualizadas.
+
+    O campo `date` é IGNORADO (cada transação tem sua própria data de
+    vencimento). Os demais campos do payload TransactionUpdate são
+    aplicados em todas as transações afetadas.
+    """
+    q = select(Transaction).where(Transaction.recurring_group_id == group_id)
+    if from_date:
+        q = q.where(Transaction.date >= from_date)
+    txs = list((await db.execute(q)).scalars().all())
+    if not txs:
+        raise HTTPException(status_code=404, detail="Nenhuma transação encontrada para o grupo informado")
+
+    payload = data.model_dump(exclude_unset=True, exclude_none=True)
+    payload.pop("date", None)  # data é por instância
+    payload.pop("payment_date", None)  # payment_date também é individual
+    if not payload:
+        raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
+
+    for tx in txs:
+        for field, value in payload.items():
+            setattr(tx, field, value)
+
+    log = AuditLog(
+        action="update_recurring_group",
+        entity="Transaction",
+        entity_id=txs[0].id,
+        user_id=current_user.id,
+        after_data=json.dumps({
+            "group_id": group_id,
+            "from_date": str(from_date) if from_date else None,
+            "affected": len(txs),
+            "patch": payload,
+        }, default=str),
+    )
+    db.add(log)
+    await db.flush()
+    for tx in txs:
+        await db.refresh(tx)
+    return txs
+
+
+@router.delete("/transactions/recurring/{group_id}")
+async def delete_recurring_group(
+    group_id: str,
+    from_date: Optional[date] = Query(
+        None,
+        description="Se informado, exclui somente as transações do grupo "
+                    "com date >= from_date (exclui 'esta e as futuras').",
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_permission("financeiro", "delete"))
+):
+    """Exclui várias transações do mesmo grupo de recorrência."""
+    q = select(Transaction).where(Transaction.recurring_group_id == group_id)
+    if from_date:
+        q = q.where(Transaction.date >= from_date)
+    txs = list((await db.execute(q)).scalars().all())
+    if not txs:
+        raise HTTPException(status_code=404, detail="Nenhuma transação encontrada para o grupo informado")
+
+    deleted_ids = [tx.id for tx in txs]
+    for tx in txs:
+        await db.delete(tx)
+
+    log = AuditLog(
+        action="delete_recurring_group",
+        entity="Transaction",
+        entity_id=deleted_ids[0],
+        user_id=current_user.id,
+        before_data=json.dumps({
+            "group_id": group_id,
+            "from_date": str(from_date) if from_date else None,
+            "deleted_ids": deleted_ids,
+        }, default=str),
+    )
+    db.add(log)
+    return {"detail": "Transações excluídas", "deleted": len(deleted_ids)}
+
+
 @router.post("/transactions/recurring", response_model=list[TransactionResponse])
 async def create_recurring_transactions(
     data: RecurringTransactionCreate,

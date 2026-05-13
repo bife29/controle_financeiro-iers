@@ -32,6 +32,8 @@ interface TransactionData {
   member_id: number | null
   project_id: number | null
   status: string
+  is_recurring?: boolean
+  recurring_group_id?: string | null
 }
 
 export function TransactionForm() {
@@ -54,6 +56,9 @@ export function TransactionForm() {
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrenceCount, setRecurrenceCount] = useState('12')
   const [recurrenceDay, setRecurrenceDay] = useState('')
+  // Edição de tx que faz parte de grupo recorrente: usuário escolhe escopo
+  const [recurringGroupId, setRecurringGroupId] = useState<string | null>(null)
+  const [recurringScope, setRecurringScope] = useState<'one' | 'forward' | 'all'>('one')
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -89,18 +94,31 @@ export function TransactionForm() {
         project_id: tx.project_id ? String(tx.project_id) : '',
         status: tx.status,
       })
+      setRecurringGroupId(tx.recurring_group_id || null)
     })
   }, [id])
 
   const filteredCategories = categories.filter((c) => c.type === form.type)
 
   const save = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      isEditing
+    mutationFn: (data: Record<string, unknown>) => {
+      if (isEditing && recurringGroupId && recurringScope !== 'one') {
+        const params: Record<string, string> = {}
+        if (recurringScope === 'forward') {
+          params.from_date = form.date
+        }
+        return api.put(
+          `/api/financial/transactions/recurring/${recurringGroupId}`,
+          data,
+          { params },
+        )
+      }
+      return isEditing
         ? api.put(`/api/financial/transactions/${id}`, data)
         : isRecurring
         ? api.post('/api/financial/transactions/recurring', data)
-        : api.post('/api/financial/transactions', data),
+        : api.post('/api/financial/transactions', data)
+    },
     onSuccess: () => navigate('/financeiro/transacoes'),
     onError: (err: unknown) => {
       setError(getErrorMessage(err, 'Erro ao salvar transação'))
@@ -303,6 +321,35 @@ export function TransactionForm() {
             </select>
           </div>
         </div>
+
+        {/* Escopo de edição para tx recorrente (Ajuste 10) */}
+        {isEditing && recurringGroupId && (
+          <div className="border rounded-lg p-4 bg-blue-50 border-blue-200 space-y-2">
+            <div className="flex items-center gap-2">
+              <Repeat className="w-4 h-4 text-blue-700" />
+              <span className="text-sm font-medium text-blue-900">
+                Esta transação faz parte de uma série recorrente
+              </span>
+            </div>
+            <label className="block text-xs font-medium text-blue-900">Aplicar alteração a:</label>
+            <select
+              value={recurringScope}
+              onChange={(e) =>
+                setRecurringScope(e.target.value as 'one' | 'forward' | 'all')
+              }
+              data-testid="recurring-scope"
+              className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="one">Apenas esta transação</option>
+              <option value="forward">Esta e as próximas (mesmo grupo)</option>
+              <option value="all">Todas do grupo</option>
+            </select>
+            <p className="text-xs text-blue-800">
+              Os campos <em>data</em> e <em>data de pagamento</em> são individuais e
+              só se aplicam a esta transação, mesmo nos modos em lote.
+            </p>
+          </div>
+        )}
 
         {/* Recorrência (apenas em novo lançamento) */}
         {!isEditing && (
