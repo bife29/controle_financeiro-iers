@@ -8,6 +8,7 @@ import { MembersPage } from '@/pages/members'
 import { SecretariaPage } from '@/pages/secretaria'
 import { RetreatsPage } from '@/pages/retreats'
 import { PatrimonyPage } from '@/pages/patrimony'
+import { ShoppingPage } from '@/pages/shopping'
 import { FeedbackPage } from '@/pages/Feedback'
 import { UsersPage } from '@/pages/users'
 import { ManualPage } from '@/pages/Manual'
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="secretaria/*" element={<SecretariaPage />} />
         <Route path="retiros/*" element={<RetreatsPage />} />
         <Route path="patrimonio/*" element={<PatrimonyPage />} />
+        <Route path="compras/*" element={<ShoppingPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
         <Route path="relatorios" element={<ReportsPage />} />
         <Route path="usuarios/*" element={<UsersPage />} />
