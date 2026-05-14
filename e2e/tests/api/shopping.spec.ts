@@ -241,4 +241,35 @@ test.describe("Compras — Listas + Pedidos + Workflow", () => {
     expect((await request.post(`${API_URL}/api/shopping/lists/999999/generate-request`, { headers })).status()).toBe(404);
     expect((await request.get(`${API_URL}/api/shopping/requests?status=ZZZ`, { headers })).status()).toBe(400);
   });
+
+  test("Regressão: DELETE Pedido Recebido — bloqueia se tx existe, libera se já foi removida", async ({ request }) => {
+    // Cria pedido, aprova e recebe (gera Transaction)
+    const req = await (await request.post(`${API_URL}/api/shopping/requests`, {
+      headers, data: {
+        title: tag("Reg-Del-Recebido"),
+        items: [{ description: tag("x"), quantity: 1, estimated_price: 10 }],
+      },
+    })).json();
+    await request.post(`${API_URL}/api/shopping/requests/${req.id}/approve`, { headers, data: {} });
+    const recv = await (await request.post(`${API_URL}/api/shopping/requests/${req.id}/receive`, {
+      headers, data: { payment_method: "Pix", status: "Confirmado" },
+    })).json();
+    expect(recv.status).toBe("Recebido");
+    expect(recv.transaction_id).toBeTruthy();
+
+    // 1) DELETE bloqueia (400) enquanto tx existe
+    const blocked = await request.delete(`${API_URL}/api/shopping/requests/${req.id}`, { headers });
+    expect(blocked.status()).toBe(400);
+
+    // 2) Apaga a Transaction
+    const txDel = await request.delete(
+      `${API_URL}/api/financial/transactions/${recv.transaction_id}`,
+      { headers }
+    );
+    expect(txDel.ok()).toBeTruthy();
+
+    // 3) Agora DELETE do pedido Recebido é liberado
+    const ok = await request.delete(`${API_URL}/api/shopping/requests/${req.id}`, { headers });
+    expect(ok.ok()).toBeTruthy();
+  });
 });

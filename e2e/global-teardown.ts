@@ -90,11 +90,25 @@ async function globalTeardown() {
 
   // Ordem: filhos antes de pais (FK)
   await deleteByTag("Retiro", "/api/retreats/", (id) => `/api/retreats/${id}`, ["name"]);
+  // Transação ANTES de Pedido — pedido Recebido referencia tx (FK).
+  // O backend libera DELETE de pedido Recebido se a tx referenciada já não existe.
   await deleteByTag(
     "Transação",
     "/api/financial/transactions?limit=500",
     (id) => `/api/financial/transactions/${id}`,
     ["description"]
+  );
+  await deleteByTag(
+    "Pedido Compra",
+    "/api/shopping/requests",
+    (id) => `/api/shopping/requests/${id}`,
+    ["title"]
+  );
+  await deleteByTag(
+    "Lista Compra",
+    "/api/shopping/lists",
+    (id) => `/api/shopping/lists/${id}`,
+    ["name"]
   );
   await deleteByTag(
     "Projeto",

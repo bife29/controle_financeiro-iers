@@ -413,8 +413,12 @@ async def delete_purchase_request(
     req = (await db.execute(select(PurchaseRequest).where(PurchaseRequest.id == request_id))).scalar_one_or_none()
     if not req:
         raise HTTPException(404, "Pedido não encontrado")
-    if req.status == "Recebido":
-        raise HTTPException(400, "Pedido já recebido — exclua a transação financeira primeiro se necessário")
+    if req.status == "Recebido" and req.transaction_id:
+        # Só bloqueia se a Transaction ainda existir (evita inconsistência permanente
+        # quando a tx foi apagada antes do pedido).
+        tx = (await db.execute(select(Transaction).where(Transaction.id == req.transaction_id))).scalar_one_or_none()
+        if tx is not None:
+            raise HTTPException(400, "Pedido já recebido — exclua a transação financeira primeiro se necessário")
     await db.delete(req)
     return {"detail": "Pedido excluído"}
 
