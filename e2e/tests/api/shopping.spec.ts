@@ -268,6 +268,13 @@ test.describe("Compras — Listas + Pedidos + Workflow", () => {
     );
     expect(txDel.ok()).toBeTruthy();
 
+    // 2b) Garante que a Transaction realmente foi removida do banco (regressão prod)
+    const txGet = await request.get(
+      `${API_URL}/api/financial/transactions/by-id/${recv.transaction_id}`,
+      { headers }
+    );
+    expect(txGet.status()).toBe(404);
+
     // 3) Agora DELETE do pedido Recebido é liberado
     const ok = await request.delete(`${API_URL}/api/shopping/requests/${req.id}`, { headers });
     expect(ok.ok()).toBeTruthy();

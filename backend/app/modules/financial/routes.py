@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete as sa_delete
+from sqlalchemy import select, func, delete as sa_delete, update as sa_update
 from typing import Optional, List
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -451,7 +451,22 @@ async def delete_transaction(
         user_id=current_user.id, before_data=json.dumps(before, default=str)
     )
     db.add(log)
+    # Nullify FK referrers (purchase_requests) antes de remover, para evitar FK
+    # violation silenciosa em Postgres (RESTRICT). Em SQLite local sem FK enforcement
+    # isso não era visível, mas em produção (Neon) o commit falhava sem propagar
+    # o erro no formato esperado.
+    try:
+        from ..shopping.models import PurchaseRequest  # import tardio p/ evitar ciclo
+        await db.execute(
+            sa_update(PurchaseRequest)
+            .where(PurchaseRequest.transaction_id == transaction_id)
+            .values(transaction_id=None)
+        )
+    except Exception:
+        # Se módulo shopping ainda não estiver migrado, segue sem bloquear.
+        pass
     await db.delete(transaction)
+    await db.flush()  # força a SQL DELETE acontecer agora; commit final em get_db
     return {"detail": "Transação excluída"}
 
 
