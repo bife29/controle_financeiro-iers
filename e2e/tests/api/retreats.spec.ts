@@ -320,8 +320,10 @@ test.describe("Módulo Retiros - API", () => {
       expect(t.type).toBe("Entrada");
       expect(t.imported_from).toBe("retiro");
       expect(t.project_id).toBe(retreat.project_id);
-      // Backend pode retornar "Conciliado" (legado) ou "Confirmado" (refatorado)
-      expect(["Confirmado", "Conciliado"]).toContain(t.status);
+      // Status consolidado em 2 estados: Previsto / Confirmado.
+      // Pagamentos de retiro devem entrar como Confirmado (dinheiro real).
+      // Regressão: routes.py criava como "Conciliado" (status legado removido).
+      expect(t.status).toBe("Confirmado");
     }
   });
 

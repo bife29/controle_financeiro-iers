@@ -59,4 +59,4 @@ class Transaction(BaseModel):
     project_id: int
     description: Optional[str]
     period_id: int
-    status: str  # Previsto/Conciliado
+    status: str  # Previsto/Confirmado

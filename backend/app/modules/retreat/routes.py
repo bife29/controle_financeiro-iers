@@ -499,7 +499,7 @@ async def register_payment(
             payment_method=payment.payment_method,
             project_id=retreat.project_id,
             member_id=participant.member_id,
-            status="Conciliado",
+            status="Confirmado",
             imported_from="retiro",
             created_by=current_user.id,
         )
