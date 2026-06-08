@@ -355,6 +355,21 @@ async def batch_delete_transactions(
         .values(transaction_id=None)
     )
 
+    # Desreferenciar purchase_requests (FK RESTRICT em Postgres faria o batch falhar
+    # silenciosamente — mesmo bug do delete individual corrigido em mai/2026).
+    # Sem isso, em produção, o botão "Excluir em massa" não removia nenhuma
+    # transação quando ao menos uma estivesse vinculada a um pedido de compra.
+    try:
+        from ..shopping.models import PurchaseRequest
+        await db.execute(
+            sa_update(PurchaseRequest)
+            .where(PurchaseRequest.transaction_id.in_(found_ids))
+            .values(transaction_id=None)
+        )
+    except Exception:
+        # Se o módulo shopping ainda não estiver migrado, segue sem bloquear.
+        pass
+
     # Deletar transações
     await db.execute(sa_delete(Transaction).where(Transaction.id.in_(found_ids)))
 
@@ -1489,9 +1504,11 @@ async def import_transactions(
         candidate_q = candidate_q.where(Transaction.project_id == project_id)
     candidates = (await db.execute(candidate_q)).scalars().all()
 
-    # Coletar bank_references já confirmados (deduplicacao forte)
-    confirmed_refs = {
-        c.bank_reference for c in candidates
+    # Coletar bank_references já confirmados (deduplicacao forte) — chaveado por
+    # (bank_reference, type) para que uma Entrada e uma Saída com o mesmo FITID
+    # NÃO sejam tratadas como a mesma transação (regressão relato Jéssica mai/2026).
+    confirmed_refs: set[tuple[str, str]] = {
+        (c.bank_reference, c.type) for c in candidates
         if c.status == "Confirmado" and c.bank_reference
     }
 
@@ -1502,11 +1519,13 @@ async def import_transactions(
     used_previstos: set[int] = set()
 
     for tx, tx_date in zip(preview, preview_dates):
-        # 1) Duplicidade forte por bank_reference
-        if tx.get("bank_reference") and tx["bank_reference"] in confirmed_refs:
+        # 1) Duplicidade forte por bank_reference (somente se o tipo coincidir)
+        if tx.get("bank_reference") and (tx["bank_reference"], tx["type"]) in confirmed_refs:
             ex = next(
                 (c for c in candidates
-                 if c.status == "Confirmado" and c.bank_reference == tx["bank_reference"]),
+                 if c.status == "Confirmado"
+                 and c.bank_reference == tx["bank_reference"]
+                 and c.type == tx["type"]),
                 None,
             )
             if ex:
