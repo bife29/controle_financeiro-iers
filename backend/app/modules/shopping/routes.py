@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from ...core.database import get_db
 from ...core.security import get_current_user, require_permission
 from ..financial.models import Transaction, AuditLog
+from ..notifications.routes import create_notification
 import json
 
 from .models import (
@@ -64,6 +65,7 @@ def _serialize_list(lst: ShoppingList, with_items: bool = False) -> dict:
         "description": lst.description,
         "is_archived": lst.is_archived,
         "created_by_id": lst.created_by_id,
+        "assigned_to_id": lst.assigned_to_id,
         "created_at": lst.created_at,
         **_list_summary(lst),
     }
@@ -74,6 +76,7 @@ def _serialize_list(lst: ShoppingList, with_items: bool = False) -> dict:
                 "quantity": it.quantity, "unit": it.unit,
                 "estimated_price": it.estimated_price, "notes": it.notes,
                 "is_purchased": it.is_purchased, "added_by_id": it.added_by_id,
+                "due_date": it.due_date,
                 "created_at": it.created_at,
             }
             for it in (lst.items or [])
@@ -93,6 +96,7 @@ def _serialize_request(req: PurchaseRequest, with_items: bool = False) -> dict:
         "category_id": req.category_id,
         "requested_by_id": req.requested_by_id,
         "approved_by_id": req.approved_by_id,
+        "assigned_to_id": req.assigned_to_id,
         "approved_at": req.approved_at,
         "rejection_reason": req.rejection_reason,
         "received_at": req.received_at,
@@ -138,10 +142,20 @@ async def create_shopping_list(
         name=data.name.strip(),
         description=data.description,
         is_archived=data.is_archived,
+        assigned_to_id=data.assigned_to_id,
         created_by_id=current_user.id,
     )
     db.add(lst)
     await db.flush()
+    if lst.assigned_to_id and lst.assigned_to_id != current_user.id:
+        await create_notification(
+            db,
+            user_id=lst.assigned_to_id,
+            type="shopping.assignment",
+            title=f"Você foi atribuído à lista '{lst.name}'",
+            link=f"/compras/listas/{lst.id}",
+            message=f"{current_user.name or current_user.email} atribuiu esta lista a você.",
+        )
     await db.refresh(lst, attribute_names=["items"])
     return _serialize_list(lst, with_items=True)
 
@@ -172,10 +186,20 @@ async def update_shopping_list(
     )).scalar_one_or_none()
     if not lst:
         raise HTTPException(404, "Lista não encontrada")
+    prev_assignee = lst.assigned_to_id
     payload = data.model_dump(exclude_unset=True, exclude_none=True)
     for k, v in payload.items():
         setattr(lst, k, v)
     await db.flush()
+    if lst.assigned_to_id and lst.assigned_to_id != prev_assignee and lst.assigned_to_id != current_user.id:
+        await create_notification(
+            db,
+            user_id=lst.assigned_to_id,
+            type="shopping.assignment",
+            title=f"Você foi atribuído à lista '{lst.name}'",
+            link=f"/compras/listas/{lst.id}",
+            message=f"{current_user.name or current_user.email} atribuiu esta lista a você.",
+        )
     await db.refresh(lst, attribute_names=["items"])
     return _serialize_list(lst, with_items=True)
 
@@ -213,6 +237,7 @@ async def add_list_item(
         estimated_price=data.estimated_price,
         notes=data.notes,
         is_purchased=data.is_purchased,
+        due_date=data.due_date,
         added_by_id=current_user.id,
     )
     db.add(item)
@@ -337,11 +362,21 @@ async def create_purchase_request(
         notes=data.notes,
         project_id=data.project_id,
         category_id=data.category_id,
+        assigned_to_id=data.assigned_to_id,
         status="Pendente",
         requested_by_id=current_user.id,
     )
     db.add(req)
     await db.flush()
+    if req.assigned_to_id and req.assigned_to_id != current_user.id:
+        await create_notification(
+            db,
+            user_id=req.assigned_to_id,
+            type="purchase.assignment",
+            title=f"Você foi atribuído ao pedido '{req.title}'",
+            link=f"/compras/pedidos/{req.id}",
+            message=f"{current_user.name or current_user.email} atribuiu este pedido a você.",
+        )
     for it in data.items:
         db.add(PurchaseRequestItem(
             request_id=req.id,
@@ -382,11 +417,21 @@ async def update_purchase_request(
     if req.status not in ("Pendente", "Aprovado"):
         raise HTTPException(400, f"Pedido em status '{req.status}' não pode ser editado")
 
+    prev_assignee = req.assigned_to_id
     payload = data.model_dump(exclude_unset=True)
     new_items = payload.pop("items", None)
     for k, v in payload.items():
         if v is not None:
             setattr(req, k, v)
+    if req.assigned_to_id and req.assigned_to_id != prev_assignee and req.assigned_to_id != current_user.id:
+        await create_notification(
+            db,
+            user_id=req.assigned_to_id,
+            type="purchase.assignment",
+            title=f"Você foi atribuído ao pedido '{req.title}'",
+            link=f"/compras/pedidos/{req.id}",
+            message=f"{current_user.name or current_user.email} atribuiu este pedido a você.",
+        )
     if new_items is not None:
         # substitui itens
         for old in list(req.items):

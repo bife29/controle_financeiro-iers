@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { ArrowLeft, Check, X, PackageCheck, Edit2, Trash2, ExternalLink } from 'lucide-react'
+import { ShoppingExportButtons } from '@/components/ShoppingExportButtons'
 
 interface Item {
   id: number; request_id: number
@@ -128,9 +129,16 @@ export function RequestDetail() {
             <h1 className="text-2xl font-bold">{data.title}</h1>
             {data.supplier && <p className="text-sm text-muted-foreground">Fornecedor: {data.supplier}</p>}
           </div>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium border ${STATUS_BADGE[data.status] ?? 'bg-gray-100'}`}>
-            {data.status}
-          </span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${STATUS_BADGE[data.status] ?? 'bg-gray-100'}`}>
+              {data.status}
+            </span>
+            <ShoppingExportButtons
+              meta={{ title: data.title, subtitle: data.notes, status: data.status, supplier: data.supplier }}
+              items={data.items}
+              testIdSuffix={`request-${data.id}`}
+            />
+          </div>
         </div>
       </div>
 

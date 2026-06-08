@@ -74,6 +74,19 @@ async def list_users(
     return result.scalars().all()
 
 
+@router.get("/users/options")
+async def list_user_options(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lista compacta de usuários (id, name, role) para selects de atribuição.
+    Acessível a qualquer usuário autenticado, pois é informação não sensível.
+    """
+    result = await db.execute(select(User).where(User.is_active == True).order_by(User.name))  # noqa: E712
+    users = result.scalars().all()
+    return [{"id": u.id, "name": u.name, "role": u.role} for u in users]
+
+
 @router.get("/users/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,

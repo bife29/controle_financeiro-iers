@@ -7,6 +7,7 @@ import { ProjectForm } from './ProjectForm'
 import { ProjectDetail } from './ProjectDetail'
 import { ImportPage } from './ImportPage'
 import { CategoriesList } from './CategoriesList'
+import { FinancialCalendar } from './FinancialCalendar'
 
 export function FinancialPage() {
   return (
@@ -21,6 +22,7 @@ export function FinancialPage() {
       <Route path="projetos/:id/editar" element={<ProjectForm />} />
       <Route path="importacao" element={<ImportPage />} />
       <Route path="categorias" element={<CategoriesList />} />
+      <Route path="calendario" element={<FinancialCalendar />} />
     </Routes>
   )
 }

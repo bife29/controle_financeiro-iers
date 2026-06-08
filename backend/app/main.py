@@ -18,6 +18,7 @@ from .modules.patrimony.models import (  # noqa
 from .modules.shopping.models import (  # noqa
     ShoppingList, ShoppingListItem, PurchaseRequest, PurchaseRequestItem,
 )
+from .modules.notifications.models import Notification  # noqa
 
 # Import routers
 from .modules.auth.routes import router as auth_router
@@ -29,6 +30,7 @@ from .modules.secretaria.routes import router as secretaria_router
 from .modules.patrimony.routes import router as patrimony_router
 from .modules.shopping.routes import router as shopping_router
 from .modules.reports.routes import router as reports_router
+from .modules.notifications.routes import router as notifications_router
 
 
 def create_app() -> FastAPI:
@@ -61,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(patrimony_router)
     app.include_router(shopping_router)
     app.include_router(reports_router)
+    app.include_router(notifications_router)
 
     @app.on_event("startup")
     async def startup():
@@ -189,6 +192,25 @@ async def _apply_migrations(conn):
     if member_cols and "age_group_override" not in member_cols:
         await conn.execute(text(
             "ALTER TABLE members ADD COLUMN age_group_override VARCHAR(30)"
+        ))
+
+    # Shopping: due_date em itens de lista (prazo desejado para compra)
+    sli_cols = await conn.run_sync(lambda c: _get_columns(c, "shopping_list_items"))
+    if sli_cols and "due_date" not in sli_cols:
+        await conn.execute(text(
+            "ALTER TABLE shopping_list_items ADD COLUMN due_date DATE"
+        ))
+
+    # Shopping: assigned_to_id em listas e pedidos (atribuição de responsável)
+    sl_cols = await conn.run_sync(lambda c: _get_columns(c, "shopping_lists"))
+    if sl_cols and "assigned_to_id" not in sl_cols:
+        await conn.execute(text(
+            "ALTER TABLE shopping_lists ADD COLUMN assigned_to_id INTEGER"
+        ))
+    pr_cols = await conn.run_sync(lambda c: _get_columns(c, "purchase_requests"))
+    if pr_cols and "assigned_to_id" not in pr_cols:
+        await conn.execute(text(
+            "ALTER TABLE purchase_requests ADD COLUMN assigned_to_id INTEGER"
         ))
 
 

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
 import { Plus, Archive, ArchiveRestore, Trash2, ListChecks, Eye } from 'lucide-react'
 
+interface UserOption { id: number; name: string; role: string }
+
 interface ShoppingList {
   id: number
   name: string
@@ -20,7 +22,13 @@ export function ListsList() {
   const [showNew, setShowNew] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [assignedToId, setAssignedToId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+
+  const { data: users = [] } = useQuery<UserOption[]>({
+    queryKey: ['user-options'],
+    queryFn: () => api.get('/api/auth/users/options').then((r) => r.data),
+  })
 
   const { data: lists = [], isLoading } = useQuery<ShoppingList[]>({
     queryKey: ['shopping-lists', showArchived],
@@ -30,10 +38,14 @@ export function ListsList() {
   })
 
   const createMut = useMutation({
-    mutationFn: () => api.post('/api/shopping/lists', { name: name.trim(), description: description || null }),
+    mutationFn: () => api.post('/api/shopping/lists', {
+      name: name.trim(),
+      description: description || null,
+      assigned_to_id: assignedToId ? Number(assignedToId) : null,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['shopping-lists'] })
-      setShowNew(false); setName(''); setDescription(''); setError(null)
+      setShowNew(false); setName(''); setDescription(''); setAssignedToId(''); setError(null)
     },
     onError: (e) => setError(getErrorMessage(e, 'Erro ao criar lista')),
   })
@@ -84,6 +96,17 @@ export function ListsList() {
             className="w-full border rounded-lg px-3 py-2 text-sm"
             rows={2}
           />
+          <select
+            value={assignedToId}
+            onChange={(e) => setAssignedToId(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            data-testid="new-list-assignee"
+          >
+            <option value="">Sem responsável</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button

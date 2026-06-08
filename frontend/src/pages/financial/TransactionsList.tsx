@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Edit2, Search, ArrowLeft, ArrowUpCircle, ArrowDownCircle, CheckSquare, Square, Download, CheckCircle2, ChevronLeft, ChevronRight, AlertTriangle, Clock } from 'lucide-react'
 
 interface Transaction {
   id: number
@@ -43,6 +43,7 @@ export function TransactionsList() {
   const [filterType, setFilterType] = useState(searchParams.get('type') || '')
   const [filterProject, setFilterProject] = useState(searchParams.get('project_id') || '')
   const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '')
+  const [filterDueSoon, setFilterDueSoon] = useState(searchParams.get('due_soon') === '1')
   const [page, setPage] = useState<number>(Math.max(1, Number(searchParams.get('page') || 1)))
   const [pageSize, setPageSize] = useState<number>(
     Math.min(500, Math.max(10, Number(searchParams.get('page_size') || 50)))
@@ -60,15 +61,16 @@ export function TransactionsList() {
     if (filterType) next.set('type', filterType)
     if (filterStatus) next.set('status', filterStatus)
     if (filterProject) next.set('project_id', filterProject)
+    if (filterDueSoon) next.set('due_soon', '1')
     if (page > 1) next.set('page', String(page))
     if (pageSize !== 50) next.set('page_size', String(pageSize))
     setSearchParams(next, { replace: true })
-  }, [filterType, filterStatus, filterProject, page, pageSize, setSearchParams])
+  }, [filterType, filterStatus, filterProject, filterDueSoon, page, pageSize, setSearchParams])
 
   // Reset à página 1 sempre que filtros mudarem
   useEffect(() => {
     setPage(1)
-  }, [filterType, filterStatus, filterProject, pageSize])
+  }, [filterType, filterStatus, filterProject, filterDueSoon, pageSize])
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['projects'],
@@ -152,12 +154,19 @@ export function TransactionsList() {
     setConfirmDate(new Date().toISOString().slice(0, 10))
   }
 
-  const filtered = transactions.filter(
-    (t) =>
-      !search ||
-      (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
-      t.value.toString().includes(search)
-  )
+  const filtered = transactions.filter((t) => {
+    if (search) {
+      const q = search.toLowerCase()
+      const matchText = (t.description || '').toLowerCase().includes(q) || t.value.toString().includes(search)
+      if (!matchText) return false
+    }
+    if (filterDueSoon) {
+      if (t.status !== 'Previsto') return false
+      const days = daysUntil(t.date)
+      if (days === null || days > 7) return false
+    }
+    return true
+  })
 
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
@@ -195,6 +204,30 @@ export function TransactionsList() {
     return `${day}/${m}/${y}`
   }
 
+  /** Dias até a data (negativo = venceu). null se data inválida. */
+  function daysUntil(iso: string): number | null {
+    if (!iso) return null
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+    if (!y || !m || !d) return null
+    const target = new Date(y, m - 1, d)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    target.setHours(0, 0, 0, 0)
+    return Math.round((target.getTime() - today.getTime()) / 86400000)
+  }
+
+  /** Retorna {label, className, icon} para o badge de vencimento, ou null. */
+  function dueBadge(t: Transaction): { label: string; className: string; level: 'overdue' | 'today' | 'soon' | 'warn' } | null {
+    if (t.status !== 'Previsto') return null
+    const days = daysUntil(t.date)
+    if (days === null) return null
+    if (days < 0) return { label: `Venceu há ${Math.abs(days)}d`, className: 'bg-red-100 text-red-800 border-red-300', level: 'overdue' }
+    if (days === 0) return { label: 'Vence hoje', className: 'bg-red-100 text-red-800 border-red-300', level: 'today' }
+    if (days <= 3) return { label: `Vence em ${days}d`, className: 'bg-amber-100 text-amber-800 border-amber-300', level: 'soon' }
+    if (days <= 7) return { label: `Vence em ${days}d`, className: 'bg-yellow-50 text-yellow-700 border-yellow-200', level: 'warn' }
+    return null
+  }
+
   const projectName = (id: number) => projects.find((p) => p.id === id)?.name || `#${id}`
   void projectName // mantido para uso em features futuras (tooltip, badge)
 
@@ -220,6 +253,7 @@ export function TransactionsList() {
             <button
               onClick={() => setBatchDeleteConfirm(true)}
               className="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+              data-testid="bulk-delete-btn"
             >
               <Trash2 className="w-4 h-4" /> Excluir ({selected.size})
             </button>
@@ -286,6 +320,19 @@ export function TransactionsList() {
           <option value="Previsto">Previsto</option>
           <option value="Confirmado">Confirmado</option>
         </select>
+        <button
+          type="button"
+          onClick={() => setFilterDueSoon((v) => !v)}
+          className={`px-3 py-2 border rounded-lg text-sm inline-flex items-center gap-1.5 transition ${
+            filterDueSoon
+              ? 'bg-amber-100 border-amber-400 text-amber-800'
+              : 'hover:bg-muted'
+          }`}
+          title="Mostrar apenas Previstos vencendo nos próximos 7 dias (inclui vencidos)"
+          data-testid="filter-due-soon"
+        >
+          <AlertTriangle className="w-4 h-4" /> Vencendo
+        </button>
       </div>
 
       {/* Tabela */}
@@ -322,10 +369,17 @@ export function TransactionsList() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((t) => (
-                  <tr key={t.id} className={`border-b last:border-0 hover:bg-muted/30 ${selected.has(t.id) ? 'bg-primary/5' : ''}`}>
+                {filtered.map((t) => {
+                  const due = dueBadge(t)
+                  return (
+                  <tr key={t.id} data-testid={`tx-row-${t.id}`} className={`border-b last:border-0 hover:bg-muted/30 ${selected.has(t.id) ? 'bg-primary/5' : ''} ${due?.level === 'overdue' || due?.level === 'today' ? 'bg-red-50/50' : ''}`}>
                     <td className="px-3 py-3">
-                      <button onClick={() => toggleSelect(t.id)} className="text-muted-foreground hover:text-foreground">
+                      <button
+                        onClick={() => toggleSelect(t.id)}
+                        className="text-muted-foreground hover:text-foreground"
+                        data-testid={`tx-select-${t.id}`}
+                        aria-label={selected.has(t.id) ? 'Desmarcar' : 'Selecionar'}
+                      >
                         {selected.has(t.id) ? (
                           <CheckSquare className="w-4 h-4 text-primary" />
                         ) : (
@@ -333,7 +387,19 @@ export function TransactionsList() {
                         )}
                       </button>
                     </td>
-                    <td className="px-4 py-3">{fmtDate(t.date)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span>{fmtDate(t.date)}</span>
+                        {due && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border w-fit ${due.className}`}
+                            data-testid={`due-badge-${t.id}`}
+                          >
+                            <Clock className="w-2.5 h-2.5" /> {due.label}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
                         t.type === 'Entrada'
@@ -464,7 +530,8 @@ export function TransactionsList() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

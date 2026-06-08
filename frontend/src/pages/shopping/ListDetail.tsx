@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
-import { ArrowLeft, Plus, Trash2, Check, X, FileText } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Check, X, FileText, Clock, AlertTriangle } from 'lucide-react'
+import { ShoppingExportButtons } from '@/components/ShoppingExportButtons'
 
 interface Item {
   id: number
@@ -13,6 +14,7 @@ interface Item {
   estimated_price?: number | null
   notes?: string | null
   is_purchased: boolean
+  due_date?: string | null
 }
 
 interface ListDetail {
@@ -20,7 +22,37 @@ interface ListDetail {
   name: string
   description?: string | null
   is_archived: boolean
+  assigned_to_id?: number | null
   items: Item[]
+}
+
+interface UserOption { id: number; name: string; role: string }
+
+function fmtDateBr(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return `${d}/${m}/${y}`
+}
+
+function daysUntil(iso: string): number | null {
+  if (!iso) return null
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  if (!y || !m || !d) return null
+  const target = new Date(y, m - 1, d)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  target.setHours(0, 0, 0, 0)
+  return Math.round((target.getTime() - today.getTime()) / 86400000)
+}
+
+function itemDueBadge(it: Item): { label: string; className: string; level: 'overdue' | 'today' | 'soon' | 'warn' } | null {
+  if (!it.due_date) return null
+  const days = daysUntil(it.due_date)
+  if (days === null) return null
+  if (days < 0) return { label: `Atrasado há ${Math.abs(days)}d`, className: 'bg-red-100 text-red-800 border-red-300', level: 'overdue' }
+  if (days === 0) return { label: 'Hoje', className: 'bg-red-100 text-red-800 border-red-300', level: 'today' }
+  if (days <= 3) return { label: `Em ${days}d`, className: 'bg-amber-100 text-amber-800 border-amber-300', level: 'soon' }
+  if (days <= 7) return { label: `Em ${days}d`, className: 'bg-yellow-50 text-yellow-700 border-yellow-200', level: 'warn' }
+  return null
 }
 
 export function ListDetail() {
@@ -28,7 +60,7 @@ export function ListDetail() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
-  const [newItem, setNewItem] = useState({ description: '', quantity: 1, unit: '', estimated_price: '' })
+  const [newItem, setNewItem] = useState({ description: '', quantity: 1, unit: '', estimated_price: '', due_date: '' })
   const [generating, setGenerating] = useState(false)
   const [genTitle, setGenTitle] = useState('')
 
@@ -38,16 +70,28 @@ export function ListDetail() {
     enabled: !!id,
   })
 
+  const { data: users = [] } = useQuery<UserOption[]>({
+    queryKey: ['user-options'],
+    queryFn: () => api.get('/api/auth/users/options').then((r) => r.data),
+  })
+
+  const updateListMut = useMutation({
+    mutationFn: (patch: Partial<{ assigned_to_id: number | null }>) =>
+      api.put(`/api/shopping/lists/${id}`, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shopping-list', id] }),
+  })
+
   const addItemMut = useMutation({
     mutationFn: () => api.post(`/api/shopping/lists/${id}/items`, {
       description: newItem.description.trim(),
       quantity: Number(newItem.quantity) || 1,
       unit: newItem.unit || null,
       estimated_price: newItem.estimated_price !== '' ? Number(newItem.estimated_price) : null,
+      due_date: newItem.due_date || null,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['shopping-list', id] })
-      setNewItem({ description: '', quantity: 1, unit: '', estimated_price: '' })
+      setNewItem({ description: '', quantity: 1, unit: '', estimated_price: '', due_date: '' })
       setError(null)
     },
     onError: (e) => setError(getErrorMessage(e, 'Erro ao adicionar item')),
@@ -86,8 +130,31 @@ export function ListDetail() {
         <Link to="/compras/listas" className="text-sm text-blue-700 hover:underline inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Voltar para listas
         </Link>
-        <h1 className="text-2xl font-bold mt-2">{data.name}</h1>
-        {data.description && <p className="text-sm text-muted-foreground">{data.description}</p>}
+        <div className="mt-2 flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold">{data.name}</h1>
+            {data.description && <p className="text-sm text-muted-foreground">{data.description}</p>}
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              <label className="text-muted-foreground">Responsável:</label>
+              <select
+                value={data.assigned_to_id ?? ''}
+                onChange={(e) => updateListMut.mutate({ assigned_to_id: e.target.value ? Number(e.target.value) : null })}
+                className="border rounded px-2 py-1 text-sm bg-white"
+                data-testid="list-assignee-select"
+              >
+                <option value="">—</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <ShoppingExportButtons
+            meta={{ title: data.name, subtitle: data.description }}
+            items={data.items}
+            testIdSuffix={`list-${data.id}`}
+          />
+        </div>
       </div>
 
       {/* Adicionar item */}
@@ -98,14 +165,14 @@ export function ListDetail() {
             value={newItem.description}
             onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
             placeholder="Descrição *"
-            className="md:col-span-5 border rounded-lg px-3 py-2 text-sm"
+            className="md:col-span-4 border rounded-lg px-3 py-2 text-sm"
           />
           <input
             type="number" step="0.01" min="0.01"
             value={newItem.quantity}
             onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
             placeholder="Qtd"
-            className="md:col-span-2 border rounded-lg px-3 py-2 text-sm"
+            className="md:col-span-1 border rounded-lg px-3 py-2 text-sm"
           />
           <input
             value={newItem.unit}
@@ -118,6 +185,14 @@ export function ListDetail() {
             value={newItem.estimated_price}
             onChange={(e) => setNewItem({ ...newItem, estimated_price: e.target.value })}
             placeholder="Preço estimado"
+            className="md:col-span-2 border rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            type="date"
+            value={newItem.due_date}
+            onChange={(e) => setNewItem({ ...newItem, due_date: e.target.value })}
+            title="Prazo desejado"
+            data-testid="new-item-due-date"
             className="md:col-span-2 border rounded-lg px-3 py-2 text-sm"
           />
           <button
@@ -148,12 +223,15 @@ export function ListDetail() {
                 <th className="text-left px-3 py-2 w-20">Qtd</th>
                 <th className="text-left px-3 py-2 w-16">Un</th>
                 <th className="text-right px-3 py-2 w-32">Estimado</th>
+                <th className="text-left px-3 py-2 w-40">Prazo</th>
                 <th className="px-3 py-2 w-12"></th>
               </tr>
             </thead>
             <tbody>
-              {data.items.map((it) => (
-                <tr key={it.id} className={`border-t ${it.is_purchased ? 'bg-emerald-50/40 text-muted-foreground' : ''}`}>
+              {data.items.map((it) => {
+                const due = itemDueBadge(it)
+                return (
+                <tr key={it.id} className={`border-t ${it.is_purchased ? 'bg-emerald-50/40 text-muted-foreground' : ''} ${due?.level === 'overdue' || due?.level === 'today' ? 'bg-red-50/60' : ''}`}>
                   <td className="px-3 py-2">
                     <input
                       type="checkbox"
@@ -167,6 +245,22 @@ export function ListDetail() {
                   <td className="px-3 py-2 text-right">
                     {it.estimated_price != null ? it.estimated_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
                   </td>
+                  <td className="px-3 py-2">
+                    {it.due_date ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs">{fmtDateBr(it.due_date)}</span>
+                        {due && !it.is_purchased && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border w-fit ${due.className}`}
+                            data-testid={`item-due-badge-${it.id}`}
+                          >
+                            {due.level === 'overdue' || due.level === 'today' ? <AlertTriangle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+                            {due.label}
+                          </span>
+                        )}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground">—</span>}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     <button
                       onClick={() => { if (window.confirm('Remover item?')) deleteItemMut.mutate(it.id) }}
@@ -177,7 +271,8 @@ export function ListDetail() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         )}

@@ -6,6 +6,7 @@ import {
   MessageSquare, LogOut, Menu, ShieldCheck, BookOpen, CalendarDays, Boxes, FileBarChart, ShoppingCart
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { NotificationBell } from '@/components/NotificationBell'
 
 const logoImg = '/logo.png'
 
@@ -93,6 +94,7 @@ export function MainLayout() {
               <p className="text-sm font-medium truncate">{user?.name}</p>
               <p className="text-xs text-blue-200 capitalize">{user?.role?.replace('_', ' ')}</p>
             </div>
+            <NotificationBell inverted />
             <button onClick={handleLogout} className="p-1.5 hover:bg-white/10 rounded">
               <LogOut className="w-4 h-4" />
             </button>
@@ -111,7 +113,7 @@ export function MainLayout() {
             <img src={logoImg} alt="IERS" className="w-7 h-7 rounded" />
             <h2 className="font-bold text-lg">IERS</h2>
           </div>
-          <div className="w-8" />
+          <NotificationBell />
         </header>
 
         {/* Page content */}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { ArrowUpCircle, ArrowDownCircle, TrendingUp, Receipt, FolderOpen, Upload, Tag, Clock } from 'lucide-react'
+import { ArrowUpCircle, ArrowDownCircle, TrendingUp, Receipt, FolderOpen, Upload, Tag, Clock, CalendarClock } from 'lucide-react'
 
 interface Summary {
   total_income: number
@@ -142,6 +142,17 @@ export function FinancialHub() {
           <h3 className="font-semibold">Categorias</h3>
           <p className="text-sm text-muted-foreground mt-1">
             Tipos de entrada e saída
+          </p>
+        </Link>
+        <Link
+          to="/financeiro/calendario"
+          className="bg-card border rounded-xl p-6 hover:shadow-md transition block"
+          data-testid="hub-link-calendario"
+        >
+          <CalendarClock className="w-8 h-8 text-primary mb-3" />
+          <h3 className="font-semibold">Calendário</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Contas a pagar/receber por dia
           </p>
         </Link>
       </div>

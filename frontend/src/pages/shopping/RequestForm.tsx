@@ -15,6 +15,7 @@ interface ItemDraft {
 
 interface Project { id: number; name: string }
 interface Category { id: number; name: string; type?: string }
+interface UserOption { id: number; name: string; role: string }
 
 export function RequestForm() {
   const { id } = useParams<{ id: string }>()
@@ -26,6 +27,7 @@ export function RequestForm() {
   const [form, setForm] = useState({
     title: '', supplier: '', notes: '',
     project_id: '' as string, category_id: '' as string,
+    assigned_to_id: '' as string,
   })
   const [items, setItems] = useState<ItemDraft[]>([])
 
@@ -43,6 +45,7 @@ export function RequestForm() {
         notes: existing.notes || '',
         project_id: existing.project_id ? String(existing.project_id) : '',
         category_id: existing.category_id ? String(existing.category_id) : '',
+        assigned_to_id: existing.assigned_to_id ? String(existing.assigned_to_id) : '',
       })
       setItems((existing.items || []).map((it: any) => ({
         id: it.id,
@@ -61,6 +64,10 @@ export function RequestForm() {
     queryKey: ['financial-categories'],
     queryFn: () => api.get('/api/financial/categories').then((r) => r.data),
   })
+  const { data: users = [] } = useQuery<UserOption[]>({
+    queryKey: ['user-options'],
+    queryFn: () => api.get('/api/auth/users/options').then((r) => r.data),
+  })
   const expenseCategories = categories.filter((c) => !c.type || c.type === 'Saída' || c.type === 'Ambos')
 
   const addRow = () => setItems([...items, { description: '', quantity: 1, unit: '', estimated_price: '' }])
@@ -76,6 +83,7 @@ export function RequestForm() {
         notes: form.notes || null,
         project_id: form.project_id ? Number(form.project_id) : null,
         category_id: form.category_id ? Number(form.category_id) : null,
+        assigned_to_id: form.assigned_to_id ? Number(form.assigned_to_id) : null,
         items: items.map((it) => ({
           description: it.description.trim(),
           quantity: Number(it.quantity) || 1,
@@ -149,6 +157,17 @@ export function RequestForm() {
           >
             <option value="">— Nenhuma —</option>
             {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium">Responsável</label>
+          <select
+            value={form.assigned_to_id} onChange={(e) => setForm({ ...form, assigned_to_id: e.target.value })}
+            className="w-full border rounded-lg px-3 py-2 text-sm mt-1 bg-white"
+            data-testid="request-assignee"
+          >
+            <option value="">— Sem responsável —</option>
+            {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </div>
         <div className="md:col-span-2">

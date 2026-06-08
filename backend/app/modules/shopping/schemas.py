@@ -1,5 +1,5 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -12,6 +12,7 @@ class ShoppingListItemBase(BaseModel):
     estimated_price: Optional[float] = Field(default=None, ge=0)
     notes: Optional[str] = None
     is_purchased: bool = False
+    due_date: Optional[date] = None
 
 
 class ShoppingListItemCreate(ShoppingListItemBase):
@@ -25,6 +26,7 @@ class ShoppingListItemUpdate(BaseModel):
     estimated_price: Optional[float] = Field(default=None, ge=0)
     notes: Optional[str] = None
     is_purchased: Optional[bool] = None
+    due_date: Optional[date] = None
 
 
 class ShoppingListItemResponse(ShoppingListItemBase):
@@ -41,6 +43,7 @@ class ShoppingListBase(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
     is_archived: bool = False
+    assigned_to_id: Optional[int] = None
 
 
 class ShoppingListCreate(ShoppingListBase):
@@ -51,6 +54,7 @@ class ShoppingListUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     description: Optional[str] = None
     is_archived: Optional[bool] = None
+    assigned_to_id: Optional[int] = None
 
 
 class ShoppingListResponse(ShoppingListBase):
@@ -105,6 +109,7 @@ class PurchaseRequestBase(BaseModel):
     project_id: Optional[int] = None
     category_id: Optional[int] = None
     list_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
 
 
 class PurchaseRequestCreate(PurchaseRequestBase):
@@ -117,6 +122,7 @@ class PurchaseRequestUpdate(BaseModel):
     notes: Optional[str] = None
     project_id: Optional[int] = None
     category_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
     items: Optional[list[PurchaseRequestItemCreate]] = None  # se vier, substitui todos
 
 
