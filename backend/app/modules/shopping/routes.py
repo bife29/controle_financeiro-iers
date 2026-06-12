@@ -147,14 +147,19 @@ async def create_shopping_list(
     )
     db.add(lst)
     await db.flush()
-    if lst.assigned_to_id and lst.assigned_to_id != current_user.id:
+    # Notificar atribuído (inclusive quando o próprio criador se auto-atribui — garante
+    # feedback visual no sino mesmo nesse caso, conforme relato Jéssica jun/2026).
+    if lst.assigned_to_id:
+        _self = (lst.assigned_to_id == current_user.id)
         await create_notification(
             db,
             user_id=lst.assigned_to_id,
             type="shopping.assignment",
-            title=f"Você foi atribuído à lista '{lst.name}'",
+            title=(f"Lista '{lst.name}' atribuída a você" if not _self
+                   else f"Você criou e assumiu a lista '{lst.name}'"),
             link=f"/compras/listas/{lst.id}",
-            message=f"{current_user.name or current_user.email} atribuiu esta lista a você.",
+            message=(f"{current_user.name or current_user.email} atribuiu esta lista a você."
+                     if not _self else "Você é o responsável por esta lista."),
         )
     await db.refresh(lst, attribute_names=["items"])
     return _serialize_list(lst, with_items=True)
@@ -191,14 +196,18 @@ async def update_shopping_list(
     for k, v in payload.items():
         setattr(lst, k, v)
     await db.flush()
-    if lst.assigned_to_id and lst.assigned_to_id != prev_assignee and lst.assigned_to_id != current_user.id:
+    # Notificar sempre que houver mudança de atribuído (inclusive auto-atribuição).
+    if lst.assigned_to_id and lst.assigned_to_id != prev_assignee:
+        _self = (lst.assigned_to_id == current_user.id)
         await create_notification(
             db,
             user_id=lst.assigned_to_id,
             type="shopping.assignment",
-            title=f"Você foi atribuído à lista '{lst.name}'",
+            title=(f"Lista '{lst.name}' atribuída a você" if not _self
+                   else f"Você assumiu a lista '{lst.name}'"),
             link=f"/compras/listas/{lst.id}",
-            message=f"{current_user.name or current_user.email} atribuiu esta lista a você.",
+            message=(f"{current_user.name or current_user.email} atribuiu esta lista a você."
+                     if not _self else "Você é o responsável por esta lista."),
         )
     await db.refresh(lst, attribute_names=["items"])
     return _serialize_list(lst, with_items=True)
@@ -368,14 +377,17 @@ async def create_purchase_request(
     )
     db.add(req)
     await db.flush()
-    if req.assigned_to_id and req.assigned_to_id != current_user.id:
+    if req.assigned_to_id:
+        _self = (req.assigned_to_id == current_user.id)
         await create_notification(
             db,
             user_id=req.assigned_to_id,
             type="purchase.assignment",
-            title=f"Você foi atribuído ao pedido '{req.title}'",
+            title=(f"Pedido '{req.title}' atribuído a você" if not _self
+                   else f"Você criou e assumiu o pedido '{req.title}'"),
             link=f"/compras/pedidos/{req.id}",
-            message=f"{current_user.name or current_user.email} atribuiu este pedido a você.",
+            message=(f"{current_user.name or current_user.email} atribuiu este pedido a você."
+                     if not _self else "Você é o responsável por este pedido."),
         )
     for it in data.items:
         db.add(PurchaseRequestItem(
@@ -423,14 +435,17 @@ async def update_purchase_request(
     for k, v in payload.items():
         if v is not None:
             setattr(req, k, v)
-    if req.assigned_to_id and req.assigned_to_id != prev_assignee and req.assigned_to_id != current_user.id:
+    if req.assigned_to_id and req.assigned_to_id != prev_assignee:
+        _self = (req.assigned_to_id == current_user.id)
         await create_notification(
             db,
             user_id=req.assigned_to_id,
             type="purchase.assignment",
-            title=f"Você foi atribuído ao pedido '{req.title}'",
+            title=(f"Pedido '{req.title}' atribuído a você" if not _self
+                   else f"Você assumiu o pedido '{req.title}'"),
             link=f"/compras/pedidos/{req.id}",
-            message=f"{current_user.name or current_user.email} atribuiu este pedido a você.",
+            message=(f"{current_user.name or current_user.email} atribuiu este pedido a você."
+                     if not _self else "Você é o responsável por este pedido."),
         )
     if new_items is not None:
         # substitui itens

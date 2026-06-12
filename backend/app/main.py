@@ -31,6 +31,7 @@ from .modules.patrimony.routes import router as patrimony_router
 from .modules.shopping.routes import router as shopping_router
 from .modules.reports.routes import router as reports_router
 from .modules.notifications.routes import router as notifications_router
+from .modules.admin.routes import router as admin_router
 
 
 def create_app() -> FastAPI:
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(shopping_router)
     app.include_router(reports_router)
     app.include_router(notifications_router)
+    app.include_router(admin_router)
 
     @app.on_event("startup")
     async def startup():

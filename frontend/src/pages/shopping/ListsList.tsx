@@ -45,6 +45,9 @@ export function ListsList() {
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['shopping-lists'] })
+      // Atribuir uma lista cria uma notificação para o atribuído (inclusive
+      // quando se atribui a si mesma) — invalidar para o sino aparecer imediato.
+      qc.invalidateQueries({ queryKey: ['notifications'] })
       setShowNew(false); setName(''); setDescription(''); setAssignedToId(''); setError(null)
     },
     onError: (e) => setError(getErrorMessage(e, 'Erro ao criar lista')),

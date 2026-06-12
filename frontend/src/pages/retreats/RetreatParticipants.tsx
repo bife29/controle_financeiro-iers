@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
   ArrowLeft, UserPlus, Search, CreditCard,
-  CheckCircle2, Clock, AlertCircle, UserX, Bus, BedDouble
+  CheckCircle2, Clock, AlertCircle, UserX, Bus, BedDouble,
+  Pencil,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -53,6 +54,7 @@ export function RetreatParticipants() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [inscriptionFilter, setInscriptionFilter] = useState('')
@@ -214,13 +216,24 @@ export function RetreatParticipants() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <Link
-                          to={`/retiros/${id}/participantes/${p.id}/pagamentos`}
-                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition font-medium"
-                        >
-                          <CreditCard className="w-3 h-3" />
-                          Carnê
-                        </Link>
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => setEditingParticipant(p)}
+                            title="Editar participante"
+                            data-testid={`participant-edit-${p.id}`}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition font-medium"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span className="hidden md:inline">Editar</span>
+                          </button>
+                          <Link
+                            to={`/retiros/${id}/participantes/${p.id}/pagamentos`}
+                            className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition font-medium"
+                          >
+                            <CreditCard className="w-3 h-3" />
+                            Carnê
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -240,6 +253,19 @@ export function RetreatParticipants() {
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false)
+            queryClient.invalidateQueries({ queryKey: ['retreat-participants', id] })
+            queryClient.invalidateQueries({ queryKey: ['retreat-dashboard', id] })
+          }}
+        />
+      )}
+
+      {/* Modal de Edição */}
+      {editingParticipant && (
+        <EditParticipantModal
+          participant={editingParticipant}
+          onClose={() => setEditingParticipant(null)}
+          onSuccess={() => {
+            setEditingParticipant(null)
             queryClient.invalidateQueries({ queryKey: ['retreat-participants', id] })
             queryClient.invalidateQueries({ queryKey: ['retreat-dashboard', id] })
           }}
@@ -548,3 +574,211 @@ function AddParticipantModal({
     </div>
   )
 }
+
+// ============ MODAL DE EDIÇÃO ============
+// Permite ajustar dados do participante sem precisar excluir e re-inscrever
+// (preserva o carnê e pagamentos já lançados). Bug reportado Jéssica jun/2026.
+
+function EditParticipantModal({
+  participant, onClose, onSuccess,
+}: {
+  participant: Participant
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [name, setName] = useState(participant.name || '')
+  const [phone, setPhone] = useState(participant.phone || '')
+  const [participantType, setParticipantType] = useState(participant.participant_type)
+  const [individualCost, setIndividualCost] = useState<string>(
+    participant.individual_cost?.toString() ?? ''
+  )
+  const [paymentStatus, setPaymentStatus] = useState(participant.payment_status)
+  const [inscriptionStatus, setInscriptionStatus] = useState(participant.inscription_status)
+  const [busOption, setBusOption] = useState(participant.bus_option)
+  const [bedOption, setBedOption] = useState(participant.bed_option)
+  const [notes, setNotes] = useState(participant.notes || '')
+  const [error, setError] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: (data: any) =>
+      api.put(`/api/retreats/participants/${participant.id}`, data),
+    onSuccess,
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || 'Erro ao salvar alterações')
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    // Só envia campos que de fato foram preenchidos para não disparar
+    // validações de campo vazio (regressão Pydantic — ver memória do projeto).
+    const payload: Record<string, unknown> = {
+      participant_type: participantType,
+      payment_status: paymentStatus,
+      inscription_status: inscriptionStatus,
+      bus_option: busOption,
+      bed_option: bedOption,
+    }
+    if (name.trim()) payload.name = name.trim()
+    if (phone.trim()) payload.phone = phone.trim()
+    if (notes.trim()) payload.notes = notes.trim()
+    if (individualCost !== '') {
+      const parsed = parseFloat(individualCost)
+      if (!isNaN(parsed) && parsed >= 0) payload.individual_cost = parsed
+    }
+
+    mutation.mutate(payload)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b">
+          <h2 className="text-lg font-bold">Editar Participante</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Atualize os dados sem perder o histórico de pagamentos.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4" data-testid="participant-edit-form">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Nome</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                data-testid="participant-edit-name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Telefone</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(00) 00000-0000"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Categoria</label>
+              <select
+                value={participantType}
+                onChange={(e) => setParticipantType(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="adulto">Adulto</option>
+                <option value="crianca">Criança</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Valor acordado (R$)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={individualCost}
+                onChange={(e) => setIndividualCost(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                data-testid="participant-edit-cost"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Status Pagamento</label>
+              <select
+                value={paymentStatus}
+                onChange={(e) => setPaymentStatus(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="Pendente">Pendente</option>
+                <option value="Parcial">Parcial</option>
+                <option value="Pago">Pago</option>
+                <option value="Isento">Isento</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Inscrição</label>
+              <select
+                value={inscriptionStatus}
+                onChange={(e) => setInscriptionStatus(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="Confirmado">Confirmado</option>
+                <option value="Espera">Em Espera</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Ônibus</label>
+              <select
+                value={busOption}
+                onChange={(e) => setBusOption(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="Sim">Sim — Assento próprio</option>
+                <option value="Colo">Colo</option>
+                <option value="Nao">Não</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Cama</label>
+              <select
+                value={bedOption}
+                onChange={(e) => setBedOption(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="Sim">Sim — Cama própria</option>
+                <option value="Divide">Divide</option>
+                <option value="Nao">Não</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Observações</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg p-3">
+            Alterar o <b>valor acordado</b> aqui não recalcula automaticamente as
+            parcelas já criadas. Para refazer o carnê, vá em <i>Pagamentos</i> e
+            ajuste/cancele as parcelas necessárias.
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              data-testid="participant-edit-save"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+            >
+              <Pencil className="w-4 h-4" />
+              {mutation.isPending ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+

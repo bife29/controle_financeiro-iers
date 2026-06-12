@@ -99,6 +99,8 @@ export function RequestForm() {
     onSuccess: (resp) => {
       qc.invalidateQueries({ queryKey: ['shopping-requests'] })
       qc.invalidateQueries({ queryKey: ['shopping-request', id] })
+      // Atribuir um pedido gera notificação para o atribuído (inclusive self).
+      qc.invalidateQueries({ queryKey: ['notifications'] })
       navigate(`/compras/pedidos/${isEdit ? id : resp.data.id}`)
     },
     onError: (e) => setError(getErrorMessage(e, 'Erro ao salvar pedido')),

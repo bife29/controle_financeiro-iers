@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Edit2, Trash2, Key, Shield, UserCheck, UserX, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, Key, Shield, UserCheck, UserX, Search, ShieldAlert } from 'lucide-react'
 
 interface User {
   id: number
@@ -116,6 +116,22 @@ export function UsersList() {
         >
           <Plus className="w-4 h-4" />
           Novo Usuário
+        </Link>
+      </div>
+
+      {/* Atalho destrutivo — apenas super_admin enxerga; rota ainda valida no backend */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
+        <div className="text-red-800">
+          <strong>Iniciar produção?</strong> Apague todas as movimentações de
+          teste mantendo usuários, membros e configurações.
+        </div>
+        <Link
+          to="/usuarios/limpar-dados"
+          data-testid="link-limpar-dados"
+          className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition"
+        >
+          <ShieldAlert className="w-3.5 h-3.5" />
+          Limpar dados
         </Link>
       </div>
 

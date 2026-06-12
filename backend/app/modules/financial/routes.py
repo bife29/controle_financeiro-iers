@@ -1564,8 +1564,14 @@ async def import_transactions(
             })
             continue
 
-        # 3) Duplicidade contra Confirmadas (valor exato, tipo igual, ±3 dias, descrição igual)
+        # 3) Duplicidade contra Confirmadas (valor exato, tipo igual, ±3 dias)
+        # Regra forte: se descrição coincide → duplicidade certa (motivo valor+data+descricao).
+        # Regra fraca: se descrição diverge → "possível duplicidade" (motivo valor+data) —
+        # típico quando o usuário lançou manualmente como Confirmado (ex: "Retiro João") e
+        # depois o extrato OFX traz o mesmo valor com descrição diferente (ex: "TED PIX João").
+        # Sem essa regra fraca, o sistema duplicava o lançamento (bug relatado Jéssica jun/2026).
         is_dup = False
+        weak_dup_match = None
         for ex in candidates:
             if ex.status != "Confirmado":
                 continue
@@ -1586,7 +1592,18 @@ async def import_transactions(
                 })
                 is_dup = True
                 break
+            # Guarda primeiro candidato com descrição diferente para a regra fraca
+            if weak_dup_match is None:
+                weak_dup_match = ex
         if is_dup:
+            continue
+        if weak_dup_match is not None:
+            duplicates.append({
+                "arquivo": tx,
+                "existente_id": weak_dup_match.id,
+                "motivo": "valor+data",
+                "existente": _existing_dict(weak_dup_match),
+            })
             continue
 
         # 4) Linha nova → confirmada

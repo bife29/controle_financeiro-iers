@@ -78,7 +78,11 @@ export function ListDetail() {
   const updateListMut = useMutation({
     mutationFn: (patch: Partial<{ assigned_to_id: number | null }>) =>
       api.put(`/api/shopping/lists/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['shopping-list', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['shopping-list', id] })
+      // Mudar o responsável da lista emite notificação para o novo atribuído.
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
   })
 
   const addItemMut = useMutation({
