@@ -3,10 +3,10 @@
 - **Autor**: Michel (dev)
 - **Solicitante / dono de negócio**: Jéssica
 - **Data de criação**: 2026-07-01
-- **Estado**: Rascunho
-- **Data de aprovação**: —
-- **Commits relacionados**: —
-- **E2E**: `e2e/tests/ui/shopping-delete-permission.spec.ts` (a criar)
+- **Estado**: E2E verde local · aguarda deploy Vercel para validação final em prod
+- **Data de aprovação**: — (aguarda Jéssica)
+- **Commits relacionados**: `01985fe` (implementação + E2E)
+- **E2E**: [`e2e/tests/ui/shopping-delete-permission.spec.ts`](../../e2e/tests/ui/shopping-delete-permission.spec.ts) — 6/6 passed local
 
 ---
 
@@ -153,3 +153,5 @@ de "Acesso negado" desnecessárias na tela.
 
 **Histórico de mudanças**:
 - 2026-07-01: criação por Michel.
+- 2026-07-01: implementação + E2E — commit `01985fe`. Suite local: 6/6
+  passed. Aguarda deploy no Vercel para validação final em produção.

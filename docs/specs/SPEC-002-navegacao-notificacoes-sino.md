@@ -3,10 +3,10 @@
 - **Autor**: Michel (dev)
 - **Solicitante / dono de negócio**: Jéssica
 - **Data de criação**: 2026-07-01
-- **Estado**: Rascunho
-- **Data de aprovação**: —
-- **Commits relacionados**: —
-- **E2E**: `e2e/tests/ui/notifications-navigation.spec.ts` (a criar)
+- **Estado**: E2E verde (local + produção) — sino funciona; provável UX confusion
+- **Data de aprovação**: — (aguarda confirmação de Jéssica com o passo-a-passo)
+- **Commits relacionados**: (E2E adicionado no commit desta iteração)
+- **E2E**: [`e2e/tests/ui/notifications-navigation.spec.ts`](../../e2e/tests/ui/notifications-navigation.spec.ts) — 2/2 passed local e prod
 
 ---
 
@@ -145,3 +145,12 @@ Reverter o commit do frontend. Backend não é tocado.
 
 **Histórico de mudanças**:
 - 2026-07-01: criação por Michel.
+- 2026-07-01: E2E `tests/ui/notifications-navigation.spec.ts` criado e
+  **passou local (2/2) e em produção (2/2)** contra
+  `https://controlefinanceiro-iers.vercel.app` + `https://iers-api.onrender.com`.
+  Confirma que o comportamento está correto — o card SIM navega para
+  `/compras/listas/{id}`. Feedback da Jéssica muito provavelmente foi
+  clicar no ícone do sino (que só abre o dropdown) e não no card da
+  notificação. Escopo restante desta spec (melhorias de affordance visual
+  — cursor pointer, ícone de seta, tooltip "Sem destino") permanece
+  válido como próximo passo mas não é bug funcional.
