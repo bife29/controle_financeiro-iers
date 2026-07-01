@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/lib/api'
 import { LoginPage } from '@/pages/Login'
 import { MainLayout } from '@/layouts/MainLayout'
 import { DashboardPage } from '@/pages/Dashboard'
@@ -21,6 +23,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const token = useAuthStore((s) => s.token)
+  const user = useAuthStore((s) => s.user)
+  const updateUser = useAuthStore((s) => s.updateUser)
+
+  // Hidrata `permissions` para sessões antigas persistidas antes da SPEC-001.
+  // Se o token existe mas o user não tem o campo permissions, busca /me.
+  useEffect(() => {
+    if (!token || !user) return
+    if (user.permissions != null) return
+    api.get('/api/auth/me')
+      .then((r) => updateUser(r.data))
+      .catch(() => {
+        // Se /me falhar, o interceptor do api.ts já cuida de logout em 401.
+      })
+  }, [token, user, updateUser])
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

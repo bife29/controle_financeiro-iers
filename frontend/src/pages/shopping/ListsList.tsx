@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
 import { Plus, Archive, ArchiveRestore, Trash2, ListChecks, Eye } from 'lucide-react'
 
 interface UserOption { id: number; name: string; role: string }
@@ -18,6 +19,10 @@ interface ShoppingList {
 
 export function ListsList() {
   const qc = useQueryClient()
+  const hasPermission = useAuthStore((s) => s.hasPermission)
+  const canEdit = hasPermission('compras', 'edit')
+  const canDelete = hasPermission('compras', 'delete')
+  const canCreate = hasPermission('compras', 'create')
   const [showArchived, setShowArchived] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [name, setName] = useState('')
@@ -78,7 +83,10 @@ export function ListsList() {
           </label>
           <button
             onClick={() => setShowNew(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2"
+            disabled={!canCreate}
+            title={canCreate ? 'Nova lista' : 'Sem permissão para criar listas'}
+            data-testid="new-list-button"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" /> Nova lista
           </button>
@@ -152,24 +160,30 @@ export function ListsList() {
                 <Link to={`${l.id}`} className="flex-1 text-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded text-xs hover:bg-blue-100 flex items-center justify-center gap-1">
                   <Eye className="w-3 h-3" /> Abrir
                 </Link>
-                <button
-                  onClick={() => archiveMut.mutate({ id: l.id, archive: !l.is_archived })}
-                  title={l.is_archived ? 'Desarquivar' : 'Arquivar'}
-                  className="px-3 py-1.5 border rounded text-xs hover:bg-gray-50"
-                >
-                  {l.is_archived ? <ArchiveRestore className="w-3 h-3" /> : <Archive className="w-3 h-3" />}
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm(`Excluir lista "${l.name}"? Os itens também serão removidos.`)) {
-                      deleteMut.mutate(l.id)
-                    }
-                  }}
-                  title="Excluir"
-                  className="px-3 py-1.5 border border-red-200 text-red-600 rounded text-xs hover:bg-red-50"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => archiveMut.mutate({ id: l.id, archive: !l.is_archived })}
+                    title={l.is_archived ? 'Desarquivar' : 'Arquivar'}
+                    data-testid={`archive-list-${l.id}`}
+                    className="px-3 py-1.5 border rounded text-xs hover:bg-gray-50"
+                  >
+                    {l.is_archived ? <ArchiveRestore className="w-3 h-3" /> : <Archive className="w-3 h-3" />}
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Excluir lista "${l.name}"? Os itens também serão removidos.`)) {
+                        deleteMut.mutate(l.id)
+                      }
+                    }}
+                    title="Excluir"
+                    data-testid={`delete-list-${l.id}`}
+                    className="px-3 py-1.5 border border-red-200 text-red-600 rounded text-xs hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             </div>
           ))}
