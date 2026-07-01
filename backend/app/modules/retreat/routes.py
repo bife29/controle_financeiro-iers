@@ -318,7 +318,41 @@ async def list_participants(
             if p.member_id and not p.name and p.member_id in member_names:
                 p.name = member_names[p.member_id]
 
-    return participants
+    # Preencher nome do responsável pelo pagamento (crianças -> adulto pagante)
+    resp_ids = {p.responsible_participant_id for p in participants if p.responsible_participant_id}
+    resp_names: dict[int, str] = {}
+    if resp_ids:
+        by_id = {p.id: p for p in participants if p.id in resp_ids}
+        # Buscar do banco quem faltar (responsável não está na página filtrada, por ex.)
+        missing = resp_ids - set(by_id.keys())
+        if missing:
+            extra = await db.execute(
+                select(RetreatParticipant).where(RetreatParticipant.id.in_(missing))
+            )
+            for p in extra.scalars().all():
+                by_id[p.id] = p
+        # Resolver o nome (participante pode ter name vazio se for membro)
+        pending_member_ids = [
+            p.member_id for p in by_id.values() if p.member_id and not p.name
+        ]
+        if pending_member_ids:
+            mres = await db.execute(
+                select(Member.id, Member.name).where(Member.id.in_(pending_member_ids))
+            )
+            m_names = {row.id: row.name for row in mres}
+            for p in by_id.values():
+                if p.member_id and not p.name and p.member_id in m_names:
+                    p.name = m_names[p.member_id]
+        resp_names = {pid: (by_id[pid].name or "") for pid in by_id}
+
+    # Serializar manualmente para incluir responsible_name (campo não é do ORM)
+    output = []
+    for p in participants:
+        d = ParticipantResponse.model_validate(p).model_dump()
+        if p.responsible_participant_id:
+            d["responsible_name"] = resp_names.get(p.responsible_participant_id)
+        output.append(d)
+    return output
 
 
 @router.post("/{retreat_id}/participants", response_model=ParticipantResponse)
@@ -345,6 +379,25 @@ async def add_participant(
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Membro já inscrito neste retiro")
 
+    # Validar responsável pelo pagamento (crianças -> adulto pagante)
+    if data.responsible_participant_id:
+        resp_result = await db.execute(
+            select(RetreatParticipant).where(
+                RetreatParticipant.id == data.responsible_participant_id
+            )
+        )
+        resp = resp_result.scalar_one_or_none()
+        if not resp:
+            raise HTTPException(
+                status_code=400,
+                detail="Responsável pelo pagamento não encontrado",
+            )
+        if resp.retreat_id != retreat_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Responsável deve pertencer ao mesmo retiro",
+            )
+
     # Definir custo individual se não informado
     cost = data.individual_cost
     if cost is None:
@@ -365,6 +418,7 @@ async def add_participant(
         individual_cost=cost,
         payment_status=data.payment_status,
         installments_count=data.installments_count,
+        responsible_participant_id=data.responsible_participant_id,
         bus_option=data.bus_option,
         bed_option=data.bed_option,
         inscription_status=inscription_status,
@@ -403,7 +457,31 @@ async def update_participant(
     if not participant:
         raise HTTPException(status_code=404, detail="Participante não encontrado")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+
+    # Validar responsible_participant_id se enviado (não pode ser ele mesmo e
+    # precisa ser do mesmo retiro; None limpa o vínculo).
+    if "responsible_participant_id" in payload:
+        new_resp = payload["responsible_participant_id"]
+        if new_resp is not None:
+            if new_resp == participant.id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Participante não pode ser responsável por si mesmo",
+                )
+            resp_result = await db.execute(
+                select(RetreatParticipant).where(
+                    RetreatParticipant.id == new_resp
+                )
+            )
+            resp = resp_result.scalar_one_or_none()
+            if not resp or resp.retreat_id != participant.retreat_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Responsável deve pertencer ao mesmo retiro",
+                )
+
+    for field, value in payload.items():
         setattr(participant, field, value)
     await db.flush()
     await db.refresh(participant)

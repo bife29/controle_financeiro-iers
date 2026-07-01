@@ -41,6 +41,11 @@ class RetreatParticipant(Base):
     payment_status = Column(String(20), default="Pendente")  # Pendente / Parcial / Pago / Isento
     paid_value = Column(Float, default=0)
     installments_count = Column(Integer, default=1)  # Qtd parcelas do carnê
+    # Vínculo de responsável pelo pagamento (usado para crianças cujos pais pagam).
+    # Aponta para outro participante do mesmo retiro (normalmente um adulto).
+    responsible_participant_id = Column(
+        Integer, ForeignKey("retreat_participants.id"), nullable=True
+    )
     # Logística operacional
     bus_option = Column(String(10), default="Sim")    # Sim / Nao / Colo
     bed_option = Column(String(10), default="Sim")    # Sim / Nao / Divide

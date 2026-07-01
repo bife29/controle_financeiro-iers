@@ -74,6 +74,17 @@ O módulo financeiro permite controlar todas as movimentações financeiras da i
 > - Para dar baixa em um Previsto: na lista de transações, clique no botão **Confirmar** ao lado da linha — informe a data do pagamento (default: hoje).
 > - A importação de extrato OFX confirma automaticamente os Previstos que batem com o extrato (mesmo valor, ±3 dias).
 
+> **📌 Recomendação de fluxo — pagamentos de eventos/retiros recebidos por comprovante**
+>
+> À medida que você recebe comprovantes (PIX, TED, dinheiro etc.) para eventos, **prefira lançar como Previsto** e deixar o extrato OFX bater automaticamente:
+> 1. Recebeu comprovante hoje → cadastra transação como **Previsto** (com o valor certo).
+> 2. Ao importar o OFX do banco, o sistema encontra o Previsto e o marca como **Confirmado** sozinho — sem duplicar.
+>
+> **Se lançar direto como Confirmado (manual)** e depois importar o OFX com a mesma transação: o sistema detecta **possível duplicidade** (mesmo valor, mesmo tipo, ±3 dias) mesmo que a descrição seja diferente, e mostra na tela de pré-visualização para você decidir. Isso evita que o valor entre 2x no caixa.
+> - Regra forte (bloqueia): mesmo valor + tipo + data + descrição igual, ou mesmo `bank_reference` (FITID).
+> - Regra fraca (marca como "possível"): mesmo valor + tipo + ±3 dias, descrição diferente — típico quando o manual foi "Retiro João" e o extrato veio "PIX REC TEDxxx".
+
+
 #### 📁 Projetos
 - **Listar** todos os projetos (Ativo, Encerrado, Cancelado)
 - **Criar** novo projeto com meta financeira
@@ -191,7 +202,9 @@ Gestão completa de retiros e encontros da igreja, incluindo inscrições, pagam
 - **Inscrever visitante** (dados manuais)
 - **Definir tipo**: adulto ou criança (custo diferenciado)
 - **Aplicar custo personalizado** se necessário
+- **Vincular responsável de pagamento** para crianças (o adulto que paga por ela)
 - **Isentar** participante do pagamento
+- **Editar** dados do participante (nome, tipo, custo, parcelas, ônibus, cama) **sem perder o carnê já lançado**
 - **Remover** participante
 
 **Como inscrever um participante:**
@@ -199,7 +212,15 @@ Gestão completa de retiros e encontros da igreja, incluindo inscrições, pagam
 2. Clique em **Inscrever Participante**
 3. Escolha: membro existente ou visitante
 4. Defina o tipo (adulto/criança) e número de parcelas
-5. Clique em **Confirmar**
+5. **Para crianças**: selecione o **Responsável pelo pagamento** (adulto já inscrito no mesmo retiro — geralmente pai/mãe). A criança **continua contando** nas listas e no dashboard, mas o carnê fica sob responsabilidade do adulto selecionado.
+6. Clique em **Confirmar**
+
+**Como editar um participante (sem perder pagamentos já lançados):**
+1. Na lista de participantes, clique em **Editar** na linha da pessoa.
+2. Ajuste o que precisa (ex.: valor acordado errado, mudar de adulto p/ criança, alterar responsável, número de parcelas).
+3. Clique em **Salvar** — o carnê e os pagamentos já registrados são **preservados**.
+
+> 💡 Antes só existia a opção de excluir + reinscrever, o que apagava o carnê. Agora usar **Editar** é o caminho recomendado.
 
 #### 💳 Carnê de Pagamentos
 - **Visualizar parcelas** geradas automaticamente
@@ -219,13 +240,23 @@ Retiros
 ├── Dashboard → KPIs (inscritos, arrecadado, orçamento)
 ├── Participantes
 │   ├── Inscrever Membro / Visitante
-│   ├── Definir Tipo e Parcelas
+│   ├── Definir Tipo (Adulto/Criança) e Parcelas
+│   ├── Criança → selecionar Responsável (adulto pagante)
+│   ├── Editar dados do participante (preserva carnê)
 │   └── Isentar do Pagamento
 └── Pagamentos
     ├── Carnê Automático
     ├── Registrar Pagamento
     └── Transação Financeira Automática
 ```
+
+> **👨‍👩‍👧 Como controlar crianças cujos pais pagam a conta**
+>
+> 1. Inscreva primeiro o **adulto responsável** (pai ou mãe).
+> 2. Inscreva a **criança** e selecione esse adulto no campo **Responsável pelo pagamento**.
+> 3. A criança aparece normalmente na lista de retirantes (contabilizada para vagas, ônibus, cama, dashboard).
+> 4. O carnê da criança é vinculado ao responsável — quando o adulto pagar, o valor da criança pode ser lançado junto no financeiro no mesmo comprovante.
+> 5. Se depois quiser trocar o responsável, use **Editar** no participante.
 
 ---
 
@@ -306,6 +337,92 @@ Quando o bem quebrar/sumir → Dar baixa (motivo)
        ↓
 Reativar (se for o caso)
 ```
+
+---
+
+## 🛒 Módulo de Compras
+
+### Visão Geral
+Gestão de **listas de compras** e **pedidos avulsos** para itens que a igreja precisa adquirir. Cada lista pode ser atribuída a um responsável, que recebe **notificação no sino** assim que a atribuição for feita.
+
+### Funcionalidades:
+- **Listas de compras**: criar, editar, arquivar, **excluir** e atribuir a um responsável
+- **Itens da lista**: adicionar/editar/remover itens (com data desejada de compra)
+- **Pedidos avulsos** (compras rápidas): registrar solicitação → aprovação → efetivação (com opção de lançar saída no financeiro automaticamente)
+- **Notificações**: sempre que uma lista/pedido é atribuído a alguém, uma notificação vai para o sino do responsável — **inclusive quando você atribui a si mesma**.
+
+### Permissões (matriz de acesso)
+O módulo Compras usa permissões granulares. Se você tomar o erro *"Acesso negado. Necessário permissão 'delete' no módulo 'compras'"*, peça ao administrador para marcar a ação **Excluir** na sua linha do módulo Compras:
+
+| Ação | O que libera |
+|------|--------------|
+| `view` | Ver listas e pedidos |
+| `create` | Criar listas, itens e pedidos |
+| `edit` | Editar listas, itens e pedidos |
+| `delete` | **Excluir** listas, itens e pedidos |
+| `approve` | Aprovar pedidos avulsos |
+
+### Fluxo:
+```
+Compras
+├── Listas
+│   ├── Criar → Nome + Atribuir Responsável → Salvar (gera notificação no sino)
+│   ├── Adicionar Itens (com data desejada)
+│   ├── Editar / Arquivar / Excluir
+│   └── Marcar itens como comprados
+└── Pedidos avulsos
+    ├── Solicitar → Aprovar → Efetivar
+    └── (Opcional) Lançar saída no Financeiro
+```
+
+---
+
+## 🔔 Notificações (Sininho)
+
+### Visão Geral
+O **sino** no topo do sistema mostra quantas notificações não lidas você tem. É atualizado automaticamente a cada poucos segundos.
+
+### Quando você recebe notificação:
+- Uma **lista de compras** foi atribuída a você (inclusive quando você mesma cria e se atribui).
+- Um **pedido de compra** foi atribuído a você.
+- Outras atribuições que o sistema começar a suportar no futuro.
+
+### Como usar:
+1. Clique no ícone do sino no topo.
+2. Veja o painel com as notificações — as não lidas ficam destacadas.
+3. Clique em uma notificação para marcá-la como lida individualmente, ou em **Marcar todas como lidas**.
+
+> 💡 Se você criar uma lista e se atribuir, o **badge vermelho** com o número aparece imediatamente após salvar.
+
+---
+
+## 🧹 Ação Administrativa: Limpar Tudo (Reset de Dados)
+
+> ⚠️ **Somente Administrador (super_admin)**. Ação **irreversível** — use somente para preparar o sistema para o "modo produção" (uso oficial), quando quiser apagar todos os dados de teste sem perder usuários e membros cadastrados.
+
+### O que é apagado
+- Todas as transações e importações do Financeiro
+- Projetos financeiros de teste
+- Retiros, participantes e carnês
+- Listas de compras, itens e pedidos avulsos
+- Itens de patrimônio, manutenções e baixas
+- Feedbacks
+- Notificações
+- Eventos da secretaria
+
+### O que é preservado
+- **Usuários** (você e a equipe) — com login, senha e permissões
+- **Membros** cadastrados
+- **Categorias** padrão do financeiro (recriadas se apagadas)
+- **Configurações** do sistema
+
+### Como executar
+1. Acesse a rota administrativa (`Administração → Limpar dados` no menu, disponível apenas para super_admin).
+2. Digite exatamente a frase de confirmação: **`LIMPAR TUDO`** (em maiúsculas, sem aspas).
+3. Confirme.
+4. O sistema retorna um relatório com o total apagado por tabela e as contagens preservadas (usuários, membros).
+
+> 🔒 **Em produção**, o reset ainda exige que a variável de ambiente `ALLOW_PROD_RESET=true` esteja configurada no servidor — proteção extra contra disparos acidentais.
 
 ---
 
@@ -424,10 +541,28 @@ R: Peça ao administrador para redefinir sua senha em Gestão de Usuários.
 R: Seu perfil pode não ter permissão. Fale com o administrador.
 
 **P: Como saber se uma importação tem duplicidade?**
-R: Na tela de pré-visualização, itens duplicados são destacados em amarelo.
+R: Na tela de pré-visualização, itens duplicados são destacados em amarelo. Existe duplicidade **forte** (bank_reference igual OU valor+data+descrição igual — o sistema bloqueia) e **fraca** (valor+tipo+±3 dias com descrição diferente — o sistema pergunta se você quer importar mesmo assim, típico quando você lançou manualmente como Confirmado antes do OFX chegar).
 
 **P: O pagamento do retiro aparece no financeiro?**
 R: Sim! Ao confirmar um pagamento no carnê, uma transação de entrada é criada automaticamente.
 
 **P: Posso personalizar as categorias financeiras?**
 R: Sim, no módulo Financeiro → Categorias você pode criar novas categorias.
+
+**P: Como cobrar o pagamento das crianças, se quem paga é o pai/mãe?**
+R: Inscreva primeiro o adulto responsável, depois inscreva a criança marcando o adulto no campo **Responsável pelo pagamento**. A criança continua na lista e no dashboard, mas o carnê é vinculado ao adulto. Veja detalhes em [Módulo de Retiros → Como controlar crianças cujos pais pagam a conta](#-módulo-de-retiros).
+
+**P: Errei o valor acordado com um participante do retiro, tenho que excluir e cadastrar de novo?**
+R: Não. Use o botão **Editar** na linha do participante — o carnê e pagamentos já registrados são preservados.
+
+**P: Recebi um aviso de "Acesso negado. Necessário permissão 'delete' no módulo 'compras'", o que faço?**
+R: Seu usuário não tem a ação **Excluir** habilitada no módulo Compras. Peça ao administrador para marcar essa permissão na sua matriz (Usuários → seu nome → Editar → módulo Compras → ✅ Excluir).
+
+**P: Atribuí uma lista de compras a mim mesma e o sino não sinalizou. É bug?**
+R: Era bug — corrigido. Hoje o sino mostra o badge vermelho imediatamente, inclusive quando você mesma cria e se atribui. Se não estiver aparecendo, atualize a página (F5) para carregar a versão nova.
+
+**P: Se eu lançar um pagamento como Confirmado manualmente e depois importar o OFX com essa mesma linha, vai duplicar?**
+R: Não deveria. O sistema detecta "possível duplicidade" quando bate valor + tipo + ±3 dias, mesmo que a descrição do banco seja diferente da que você digitou. Você decide na pré-visualização se aceita ou descarta. **Recomendado:** lançar como Previsto e deixar o OFX confirmar — evita a decisão manual.
+
+**P: Quero começar a usar o sistema "pra valer" — como limpo os dados de teste sem perder os usuários?**
+R: O administrador tem uma ação **Limpar Tudo** que apaga transações, retiros, compras, patrimônio, feedbacks e notificações, mas **preserva usuários, membros e categorias**. Veja [Ação Administrativa: Limpar Tudo](#-ação-administrativa-limpar-tudo-reset-de-dados).

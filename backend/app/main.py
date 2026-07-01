@@ -215,5 +215,13 @@ async def _apply_migrations(conn):
             "ALTER TABLE purchase_requests ADD COLUMN assigned_to_id INTEGER"
         ))
 
+    # Retreat participants: responsible_participant_id (crianças pagas pelos pais)
+    rp_cols = await conn.run_sync(lambda c: _get_columns(c, "retreat_participants"))
+    if rp_cols and "responsible_participant_id" not in rp_cols:
+        await conn.execute(text(
+            "ALTER TABLE retreat_participants "
+            "ADD COLUMN responsible_participant_id INTEGER"
+        ))
+
 
 app = create_app()

@@ -21,6 +21,8 @@ interface Participant {
   payment_status: string
   paid_value: number
   installments_count: number
+  responsible_participant_id: number | null
+  responsible_name: string | null
   bus_option: string
   bed_option: string
   inscription_status: string
@@ -179,11 +181,20 @@ export function RetreatParticipants() {
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-medium">{p.name || `Membro #${p.member_id}`}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             {p.phone && <span className="text-xs text-muted-foreground">{p.phone}</span>}
                             <span className={cn("text-xs px-1.5 py-0.5 rounded", p.is_member ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700")}>
                               {p.is_member ? "Membro" : "Visitante"}
                             </span>
+                            {p.responsible_participant_id && p.responsible_name && (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700"
+                                data-testid={`participant-responsible-${p.id}`}
+                                title="Pagamento sob responsabilidade deste adulto"
+                              >
+                                Paga: {p.responsible_name}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -250,6 +261,9 @@ export function RetreatParticipants() {
           retreatId={parseInt(id!)}
           costAdult={retreat?.cost_adult || 0}
           costChild={retreat?.cost_child || 0}
+          adultParticipants={participants.filter(p => p.participant_type === 'adulto').map(p => ({
+            id: p.id, name: p.name || `Membro #${p.member_id}`
+          }))}
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false)
@@ -263,6 +277,9 @@ export function RetreatParticipants() {
       {editingParticipant && (
         <EditParticipantModal
           participant={editingParticipant}
+          adultParticipants={participants
+            .filter(p => p.participant_type === 'adulto' && p.id !== editingParticipant.id)
+            .map(p => ({ id: p.id, name: p.name || `Membro #${p.member_id}` }))}
           onClose={() => setEditingParticipant(null)}
           onSuccess={() => {
             setEditingParticipant(null)
@@ -278,11 +295,12 @@ export function RetreatParticipants() {
 // ============ MODAL DE INSCRIÇÃO ============
 
 function AddParticipantModal({
-  retreatId, costAdult, costChild, onClose, onSuccess
+  retreatId, costAdult, costChild, adultParticipants, onClose, onSuccess
 }: {
   retreatId: number
   costAdult: number
   costChild: number
+  adultParticipants: Array<{ id: number; name: string }>
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -297,6 +315,7 @@ function AddParticipantModal({
   const [isExempt, setIsExempt] = useState(false)
   const [busOption, setBusOption] = useState('Sim')
   const [bedOption, setBedOption] = useState('Sim')
+  const [responsibleId, setResponsibleId] = useState<string>('')
   const [error, setError] = useState('')
 
   const { data: membersResults = [] } = useQuery<MemberSummary[]>({
@@ -337,6 +356,8 @@ function AddParticipantModal({
       individual_cost: isExempt ? 0 : cost,
       payment_status: isExempt ? 'Isento' : 'Pendente',
       installments_count: isExempt ? 0 : installments,
+      responsible_participant_id:
+        participantType === 'crianca' && responsibleId ? Number(responsibleId) : null,
       bus_option: busOption,
       bed_option: bedOption,
     })
@@ -467,6 +488,30 @@ function AddParticipantModal({
             </div>
           </div>
 
+          {/* Responsável pelo pagamento (crianças) */}
+          {participantType === 'crianca' && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
+              <label className="block text-sm font-medium text-purple-900">
+                Responsável pelo pagamento (pai / mãe)
+              </label>
+              <select
+                value={responsibleId}
+                onChange={(e) => setResponsibleId(e.target.value)}
+                data-testid="participant-responsible-select"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none text-sm bg-white"
+              >
+                <option value="">— A criança paga o próprio carnê —</option>
+                {adultParticipants.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-purple-800">
+                Selecione o adulto já inscrito que é responsável financeiro por esta criança.
+                A criança continua contando nas listas e no dashboard.
+              </p>
+            </div>
+          )}
+
           {/* Logística */}
           <div className="bg-muted/30 rounded-xl p-4 space-y-3">
             <p className="text-sm font-medium flex items-center gap-2">
@@ -580,9 +625,10 @@ function AddParticipantModal({
 // (preserva o carnê e pagamentos já lançados). Bug reportado Jéssica jun/2026.
 
 function EditParticipantModal({
-  participant, onClose, onSuccess,
+  participant, adultParticipants, onClose, onSuccess,
 }: {
   participant: Participant
+  adultParticipants: Array<{ id: number; name: string }>
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -596,6 +642,9 @@ function EditParticipantModal({
   const [inscriptionStatus, setInscriptionStatus] = useState(participant.inscription_status)
   const [busOption, setBusOption] = useState(participant.bus_option)
   const [bedOption, setBedOption] = useState(participant.bed_option)
+  const [responsibleId, setResponsibleId] = useState<string>(
+    participant.responsible_participant_id?.toString() ?? ''
+  )
   const [notes, setNotes] = useState(participant.notes || '')
   const [error, setError] = useState('')
 
@@ -620,6 +669,9 @@ function EditParticipantModal({
       inscription_status: inscriptionStatus,
       bus_option: busOption,
       bed_option: bedOption,
+      // Sempre envia responsible_participant_id (inclusive null para limpar)
+      responsible_participant_id:
+        participantType === 'crianca' && responsibleId ? Number(responsibleId) : null,
     }
     if (name.trim()) payload.name = name.trim()
     if (phone.trim()) payload.phone = phone.trim()
@@ -745,6 +797,26 @@ function EditParticipantModal({
               />
             </div>
           </div>
+
+          {/* Responsável pelo pagamento (aparece quando categoria = criança) */}
+          {participantType === 'crianca' && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
+              <label className="block text-sm font-medium text-purple-900">
+                Responsável pelo pagamento (pai / mãe)
+              </label>
+              <select
+                value={responsibleId}
+                onChange={(e) => setResponsibleId(e.target.value)}
+                data-testid="participant-edit-responsible"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none text-sm bg-white"
+              >
+                <option value="">— A criança paga o próprio carnê —</option>
+                {adultParticipants.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg p-3">
             Alterar o <b>valor acordado</b> aqui não recalcula automaticamente as

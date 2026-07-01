@@ -67,6 +67,7 @@ class ParticipantCreate(BaseModel):
     individual_cost: Optional[float] = None  # Se None, usa o valor padrão do retiro
     payment_status: str = "Pendente"
     installments_count: int = 1
+    responsible_participant_id: Optional[int] = None  # Adulto responsável (crianças)
     bus_option: str = "Sim"    # Sim / Nao / Colo
     bed_option: str = "Sim"    # Sim / Nao / Divide
     notes: Optional[str] = None
@@ -79,6 +80,7 @@ class ParticipantUpdate(BaseModel):
     individual_cost: Optional[float] = None
     payment_status: Optional[str] = None
     installments_count: Optional[int] = None
+    responsible_participant_id: Optional[int] = None
     bus_option: Optional[str] = None
     bed_option: Optional[str] = None
     inscription_status: Optional[str] = None
@@ -97,6 +99,8 @@ class ParticipantResponse(BaseModel):
     payment_status: str
     paid_value: float
     installments_count: int
+    responsible_participant_id: Optional[int] = None
+    responsible_name: Optional[str] = None  # Preenchido dinâmicamente pela rota
     bus_option: str
     bed_option: str
     inscription_status: str
