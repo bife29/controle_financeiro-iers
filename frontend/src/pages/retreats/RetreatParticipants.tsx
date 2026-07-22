@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import {
   ArrowLeft, UserPlus, Search, CreditCard,
   CheckCircle2, Clock, AlertCircle, UserX, Bus, BedDouble,
-  Pencil,
+  Pencil, Printer, ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -85,6 +85,16 @@ export function RetreatParticipants() {
     return name.toLowerCase().includes(searchFilter.toLowerCase())
   })
 
+  const openPrint = (mode: 'completa' | 'onibus') => {
+    const params = new URLSearchParams({ modo: mode })
+    if (searchFilter.trim()) params.set('q', searchFilter.trim())
+    window.open(
+      `/retiros/${id}/participantes/impressao?${params.toString()}`,
+      '_blank',
+      'noopener',
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -103,13 +113,35 @@ export function RetreatParticipants() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:opacity-90 transition shadow-sm"
-        >
-          <UserPlus className="w-4 h-4" />
-          Inscrever Participante
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => openPrint('onibus')}
+            title="Abre uma lista simplificada (nome, tipo, telefone, status) para chamada no ônibus"
+            data-testid="print-onibus-button"
+            className="inline-flex items-center gap-2 px-3 py-2.5 border rounded-lg font-medium text-sm hover:bg-muted transition"
+          >
+            <ClipboardList className="w-4 h-4" />
+            Lista de ônibus
+          </button>
+          <button
+            type="button"
+            onClick={() => openPrint('completa')}
+            title="Abre a listagem completa com todos os dados e totais para impressão"
+            data-testid="print-completa-button"
+            className="inline-flex items-center gap-2 px-3 py-2.5 border rounded-lg font-medium text-sm hover:bg-muted transition"
+          >
+            <Printer className="w-4 h-4" />
+            Imprimir completa
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:opacity-90 transition shadow-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            Inscrever Participante
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}

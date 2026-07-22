@@ -3,6 +3,7 @@ import { RetreatsList } from './RetreatsList'
 import { RetreatForm } from './RetreatForm'
 import { RetreatDetail } from './RetreatDetail'
 import { RetreatParticipants } from './RetreatParticipants'
+import { RetreatParticipantsPrint } from './RetreatParticipantsPrint'
 import { ParticipantPayments } from './ParticipantPayments'
 
 export function RetreatsPage() {
@@ -13,6 +14,7 @@ export function RetreatsPage() {
       <Route path=":id" element={<RetreatDetail />} />
       <Route path=":id/editar" element={<RetreatForm />} />
       <Route path=":id/participantes" element={<RetreatParticipants />} />
+      <Route path=":id/participantes/impressao" element={<RetreatParticipantsPrint />} />
       <Route path=":id/participantes/:participantId/pagamentos" element={<ParticipantPayments />} />
     </Routes>
   )

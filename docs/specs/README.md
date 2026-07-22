@@ -39,6 +39,6 @@ Rascunho → Aprovada → Em implementação → E2E verde → Publicada (prod) 
 |----|--------|--------|-----|
 | [SPEC-001](SPEC-001-excluir-lista-compras-permissao.md) | Excluir lista de compras respeitando permissão | ✅ **Publicada** (validada em prod por Jéssica em 15/07/26) | [tests/ui/shopping-delete-permission.spec.ts](../../e2e/tests/ui/shopping-delete-permission.spec.ts) |
 | [SPEC-002](SPEC-002-navegacao-notificacoes-sino.md) | Navegação a partir do sininho de notificações | ⚠️ **Reaberta** — navegação OK; dropdown do sino aparece cortado no desktop (retest 15/07) | [tests/ui/notifications-navigation.spec.ts](../../e2e/tests/ui/notifications-navigation.spec.ts) + falta E2E de visibilidade |
-| [SPEC-003](SPEC-003-retiros-listagem-imprimir-e-revalidar.md) | Retiros: imprimir listagem de participantes + revalidar deploy de features não observadas | Rascunho (aguarda aprovação) | a criar: `tests/ui/retreats-print-participants.spec.ts` |
+| [SPEC-003](SPEC-003-retiros-listagem-imprimir-e-revalidar.md) | Retiros: imprimir listagem de participantes + revalidar deploy de features não observadas | 🚧 **Em implementação** (código local + E2E verde, aguardando validação da Jéssica em prod) | [tests/ui/retreats-print-participants.spec.ts](../../e2e/tests/ui/retreats-print-participants.spec.ts) |
 
 Para novas specs, copie [TEMPLATE.md](TEMPLATE.md).
