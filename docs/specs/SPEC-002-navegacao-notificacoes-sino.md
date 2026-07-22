@@ -3,10 +3,13 @@
 - **Autor**: Michel (dev)
 - **Solicitante / dono de negócio**: Jéssica
 - **Data de criação**: 2026-07-01
-- **Estado**: E2E verde (local + produção) — sino funciona; provável UX confusion
-- **Data de aprovação**: — (aguarda confirmação de Jéssica com o passo-a-passo)
-- **Commits relacionados**: (E2E adicionado no commit desta iteração)
-- **E2E**: [`e2e/tests/ui/notifications-navigation.spec.ts`](../../e2e/tests/ui/notifications-navigation.spec.ts) — 2/2 passed local e prod
+- **Estado**: ✅ **Aprovada 2026-07-22** — implementação em curso: fix
+  `useLayoutEffect` no `NotificationBell` + E2E de visibilidade.
+  Navegação (foco original) segue OK; escopo ampliado para cobrir
+  visibilidade do dropdown. Ver seção 13.
+- **Data de aprovação**: — (parcial: navegação OK; falta corrigir dropdown cortado)
+- **Commits relacionados**: `6abb496` (E2E de navegação — passou local e prod)
+- **E2E**: [`e2e/tests/ui/notifications-navigation.spec.ts`](../../e2e/tests/ui/notifications-navigation.spec.ts) — 2/2 passed local e prod (foco: navegação). **Falta E2E de visibilidade do dropdown.**
 
 ---
 
@@ -154,3 +157,74 @@ Reverter o commit do frontend. Backend não é tocado.
   notificação. Escopo restante desta spec (melhorias de affordance visual
   — cursor pointer, ícone de seta, tooltip "Sem destino") permanece
   válido como próximo passo mas não é bug funcional.
+- 2026-07-22: **Reaberta.** Feedback Jéssica 15/07: "aparece a notificação
+  no sininho, mas não aparece o card, aparentemente está cortando (já
+  reduzi o tamanho da tela para ver se muda, mas não funciona)". Ver seção 13.
+
+---
+
+## 13. Novo bug — dropdown do sino cortado / invisível (retest 15/07/26)
+
+### 13.1 Reprodução (relato)
+
+> "Aparece a notificação no sininho (badge), mas não aparece o card,
+> aparentemente está cortando. Já reduzi o tamanho da tela para ver se
+> muda, mas não funciona."
+
+### 13.2 Diagnóstico (leitura de código)
+
+- Em desktop (`lg:` breakpoint), o `<NotificationBell inverted />` está
+  posicionado **no rodapé do sidebar** (`frontend/src/layouts/MainLayout.tsx`,
+  bloco `<div className="p-3 border-t border-white/10">` dentro do `<aside>`).
+- O dropdown em [`NotificationBell.tsx`](../../frontend/src/components/NotificationBell.tsx)
+  usa `absolute right-0 top-full mt-2 w-80 max-w-[90vw]`, ou seja,
+  **abre para baixo**.
+- Como o botão do sino está colado ao **rodapé do viewport** (final do
+  sidebar altura-tela), `top-full` posiciona o dropdown **abaixo da área
+  visível** — o usuário vê o badge, clica no sino, o dropdown até é
+  renderizado, mas fica embaixo do viewport (o navegador não faz scroll
+  porque o sidebar tem `flex flex-col` sem scroll externo).
+- Em mobile, o sino fica no `<header className="lg:hidden">` **no topo**,
+  então `top-full` funciona bem. Por isso o bug é predominante em desktop.
+
+### 13.3 Critério de aceitação adicional (AC-6)
+
+- **AC-6** — Given usuário em desktop (viewport ≥ 1024px) com badge > 0,
+  When clica no sino do sidebar, Then o dropdown de notificações fica
+  **totalmente visível dentro do viewport** (não cortado embaixo nem
+  atrás de outros elementos).
+
+### 13.4 Solução técnica (aprovada 2026-07-22)
+
+**Detecção dinâmica com `useLayoutEffect`** (solução robusta):
+
+- Em [`NotificationBell.tsx`](../../frontend/src/components/NotificationBell.tsx),
+  quando `open === true`, medir `buttonRef.current.getBoundingClientRect()`.
+- Comparar `spaceBelow = window.innerHeight - buttonRect.bottom` contra a
+  altura estimada do dropdown (usar 384px = `max-h-96` + padding). Se
+  `spaceBelow < dropdownHeight`, usar `bottom-full mb-2` (abrir pra cima);
+  caso contrário, manter `top-full mt-2` (abrir pra baixo).
+- Estado local: `const [placement, setPlacement] = useState<'top'|'bottom'>('bottom')`.
+- Recalcular no `open` mudar e no `resize` da janela.
+- Vantagem: funciona automaticamente para o sino do sidebar (desktop, sem
+  espaço abaixo → abre pra cima) e para o sino do header mobile (com
+  espaço abaixo → mantém top-full). Sem prop nova, sem toggle manual.
+
+### 13.5 E2E de regressão obrigatório
+
+Adicionar em `e2e/tests/ui/notifications-navigation.spec.ts` (ou spec
+novo `notifications-dropdown-visible.spec.ts`):
+
+- Viewport 1280×720 (desktop).
+- Login, criar notificação (atribuir lista de compras a si mesmo).
+- Aguardar badge.
+- Clicar no sino do sidebar (usar seletor específico do desktop).
+- `await expect(dropdown).toBeVisible()` — verificar que
+  `dropdown.boundingBox().y + boundingBox().height <= viewport.height`.
+
+### 13.6 Impacto e rollout
+
+- **Frontend apenas** (nova prop no componente + condicional CSS).
+- Deploy Vercel; validar em prod com Jéssica (viewport dela é
+  desktop tesouraria — provável 1366×768 ou 1920×1080).
+- Marcar SPEC-002 como **Publicada** só depois desse fix + validação.

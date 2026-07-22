@@ -3,8 +3,8 @@
 - **Autor**: Michel (dev)
 - **Solicitante / dono de negócio**: Jéssica
 - **Data de criação**: 2026-07-01
-- **Estado**: E2E verde local · aguarda deploy Vercel para validação final em prod
-- **Data de aprovação**: — (aguarda Jéssica)
+- **Estado**: ✅ **Publicada** — validada em produção por Jéssica em 2026-07-15
+- **Data de aprovação**: 2026-07-22 (feedback Jéssica: "Teste 15/07 — funciona")
 - **Commits relacionados**: `01985fe` (implementação + E2E)
 - **E2E**: [`e2e/tests/ui/shopping-delete-permission.spec.ts`](../../e2e/tests/ui/shopping-delete-permission.spec.ts) — 6/6 passed local
 
@@ -143,11 +143,13 @@ de "Acesso negado" desnecessárias na tela.
 
 ## 12. Perguntas em aberto
 
-- [ ] Qual é o papel exato da Jéssica em produção? (`super_admin`, `secretaria`
-      ou algo customizado?) — precisa para dimensionar se ela deveria ter
-      `compras.delete` ou não.
-- [ ] Devemos adicionar `compras.delete` ao default de `secretaria` ou manter
-      restrito a `super_admin`? Decisão de negócio.
+- [x] Qual é o papel exato da Jéssica em produção? → **Resposta (2026-07-22):**
+      Jéssica é tesoureira e única operadora do sistema, portanto atende todas
+      as camadas → papel efetivo em prod é `super_admin`.
+- [x] Devemos adicionar `compras.delete` ao default de `secretaria`? → **Não.**
+      Fica restrito a `super_admin` no default. Se a igreja quiser dar acesso
+      a outra pessoa `secretaria`, basta marcar `compras.delete` na matriz
+      individual em Gestão de Usuários (a UI já suporta).
 
 ---
 
@@ -155,3 +157,7 @@ de "Acesso negado" desnecessárias na tela.
 - 2026-07-01: criação por Michel.
 - 2026-07-01: implementação + E2E — commit `01985fe`. Suite local: 6/6
   passed. Aguarda deploy no Vercel para validação final em produção.
+- 2026-07-22: **Publicada.** Jéssica validou em 15/07: "funciona". Confirmou
+  que seu papel é `super_admin` (tesoureira única operadora). Mantido
+  `compras.delete` restrito a `super_admin` no default — override individual
+  pela matriz de permissões continua disponível.

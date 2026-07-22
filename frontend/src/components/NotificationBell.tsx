@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bell, Check, CheckCheck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -20,6 +20,12 @@ interface NotificationList {
   unread_count: number
 }
 
+// Altura estimada máxima do dropdown (header ~40px + max-h-96 = 384px + borda + shadow).
+// Usado para decidir se abre pra baixo ou pra cima quando não há espaço.
+// Ver SPEC-002 seção 13.
+const DROPDOWN_ESTIMATED_HEIGHT = 440
+const DROPDOWN_ESTIMATED_WIDTH = 320  // w-80
+
 function relTime(iso?: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -33,9 +39,12 @@ function relTime(iso?: string | null): string {
 
 export function NotificationBell({ inverted = false }: { inverted?: boolean }) {
   const [open, setOpen] = useState(false)
+  const [placement, setPlacement] = useState<'top' | 'bottom'>('bottom')
+  const [align, setAlign] = useState<'left' | 'right'>('right')
   const navigate = useNavigate()
   const qc = useQueryClient()
   const ref = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
 
   const { data } = useQuery<NotificationList>({
     queryKey: ['notifications'],
@@ -63,6 +72,39 @@ export function NotificationBell({ inverted = false }: { inverted?: boolean }) {
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [open])
 
+  // Decide dinamicamente se o dropdown abre pra baixo (top-full) ou pra cima
+  // (bottom-full) e se alinha à direita ou à esquerda do botão com base no
+  // espaço disponível no viewport. Necessário porque o sino do sidebar
+  // (desktop) fica no rodapé-esquerda da tela — se abrir pra baixo, fica
+  // cortado; se alinhar à direita com `right-0`, sai pela esquerda.
+  // Ver SPEC-002 seção 13.
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) return
+    function decide() {
+      if (!buttonRef.current) return
+      const rect = buttonRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      // Vertical: se abaixo não cabe mas acima cabe → abre pra cima.
+      if (spaceBelow < DROPDOWN_ESTIMATED_HEIGHT && spaceAbove > spaceBelow) {
+        setPlacement('top')
+      } else {
+        setPlacement('bottom')
+      }
+      // Horizontal: com right-0, dropdown estende para a esquerda do botão.
+      // Se essa extensão passa da borda esquerda do viewport, alinhar left-0.
+      const spaceLeftOfButtonRight = rect.right
+      if (spaceLeftOfButtonRight < DROPDOWN_ESTIMATED_WIDTH) {
+        setAlign('left')
+      } else {
+        setAlign('right')
+      }
+    }
+    decide()
+    window.addEventListener('resize', decide)
+    return () => window.removeEventListener('resize', decide)
+  }, [open])
+
   const unread = data?.unread_count ?? 0
   const items = data?.items ?? []
 
@@ -77,6 +119,7 @@ export function NotificationBell({ inverted = false }: { inverted?: boolean }) {
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
         className={`relative p-2 rounded-lg transition ${
           inverted ? 'hover:bg-white/10 text-white' : 'hover:bg-muted text-foreground'
@@ -96,7 +139,14 @@ export function NotificationBell({ inverted = false }: { inverted?: boolean }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] bg-white text-gray-900 border rounded-xl shadow-xl z-50 overflow-hidden">
+        <div
+          className={`absolute w-80 max-w-[90vw] bg-white text-gray-900 border rounded-xl shadow-xl z-50 overflow-hidden ${
+            placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          } ${align === 'left' ? 'left-0' : 'right-0'}`}
+          data-testid="notifications-dropdown"
+          data-placement={placement}
+          data-align={align}
+        >
           <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50">
             <h3 className="font-semibold text-sm">Notificações</h3>
             {unread > 0 && (
